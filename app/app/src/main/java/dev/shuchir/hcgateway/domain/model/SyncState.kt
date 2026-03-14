@@ -4,5 +4,10 @@ sealed class SyncState {
     data object Idle : SyncState()
     data class Syncing(val currentType: String, val typesCompleted: Int, val totalTypes: Int) : SyncState()
     data class Error(val message: String) : SyncState()
-    data class Done(val recordCount: Int) : SyncState()
+    data class Done(val recordCount: Int, val typeResults: List<TypeSyncResult> = emptyList()) : SyncState()
 }
+
+data class TypeSyncResult(
+    val typeName: String,
+    val recordCount: Int,
+)
