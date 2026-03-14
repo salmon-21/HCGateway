@@ -2,54 +2,61 @@
 
 ## Project Overview
 
-Android app (React Native + Expo) that syncs Health Connect data to a self-hosted API server.
+Android app (Jetpack Compose + Kotlin) that syncs Health Connect data to a self-hosted API server.
 
 ## Architecture
 
-- **Android app**: `app/` — React Native 0.74.3 + Expo 51
+- **Android app**: `app/` — Jetpack Compose, Kotlin, Hilt DI, MVVM
 - **API server**: `api/` — Python Flask
 
-## Known Bug: formatDateToISOString timezone issue
+### App Structure
 
-**File**: `app/App.js` lines 547-551
+```
+app/app/src/main/java/dev/shuchir/hcgateway/
+  HCGatewayApp.kt              # @HiltAndroidApp, Sentry init, theme init
+  MainActivity.kt              # AppCompatActivity, single activity
 
-```javascript
-const formatDateToISOString = (date) => {
-  if (!date) return null;
-  const midnightDate = new Date(date);
-  midnightDate.setHours(0, 0, 0, 0);  // Local timezone
-  return midnightDate.toISOString();    // Converts to UTC → creates offset
-};
+  di/                           # Hilt modules (AppModule, HealthConnectModule)
+  data/
+    local/                      # DataStore preferences
+    remote/                     # Retrofit API, auth interceptors
+    repository/                 # Auth, Sync, HealthConnect, NetworkMonitor
+  domain/model/                 # RecordTypes, SyncState
+  ui/
+    theme/                      # Material You + custom colors (success)
+    navigation/                 # NavGraph with material-motion transitions
+    home/                       # Sync screen (HomeScreen, HomeViewModel)
+    login/                      # Login screen
+    settings/                   # Settings, Licenses screens
+    onboarding/                 # Permission onboarding
+    components/                 # FilledCard, SyncWarningDialog
+  worker/                       # SyncWorker, SyncScheduler, BootReceiver, PersistentSyncService
+  fcm/                          # Firebase Cloud Messaging
 ```
 
-- Only affects "SYNC SELECTED RANGE" (line 742), NOT auto/Full 30-day sync
-- Auto sync (line 519) calls `sync()` without args → no bug
-- Causes data gap equal to device's UTC offset
-- GitHub Issue #52 reports same symptom
+### Key Dependencies
 
-## Code Quality Issues (App.js — 908 lines)
-
-1. Single-file monolith — UI, business logic, API calls all mixed
-2. Global variables for state (`let login`, `let apiBase`, `let lastSync`)
-3. `useReducer(x => x+1, 0)` forceUpdate hack
-4. `setTimeout(j*3000)` for sync queue — unreliable async
-5. Error handling is just `console.log(err)`
-6. No component separation
-
-## Refactoring Plan
-
-1. Split App.js → screens / components / hooks / services
-2. Replace global variables → React Context or Zustand
-3. Fix sync queue (setTimeout → proper async/await)
-4. Fix formatDateToISOString bug
-5. UI redesign
+- Compose BOM 2026.02.00, Material 3 1.5.0-alpha15 (M3 Expressive)
+- Hilt, Retrofit + OkHttp, DataStore, WorkManager
+- Health Connect Client 1.1.0-alpha10
+- Firebase Messaging, Sentry
+- material-motion-compose-core (Shared Axis X transitions)
+- aboutlibraries-core (license metadata)
 
 ## Development Setup
 
-- **Dev workflow**: Expo Dev Client
-  - Build Dev Client once: `npx expo run:android`
-  - Then run `npx expo start --dev-client` for hot reload
-  - JS changes don't require rebuild
+- **Build & install**: `./gradlew installDebug` (auto-launches app)
+- **Device required**: Android device with Health Connect
+- **Gradle**: 9.4.0, AGP 8.10.1, Kotlin 2.1.20
+
+## Key Design Decisions
+
+- **AppCompatDelegate** for theme switching (instant, no Compose delay)
+- **OkHttp AuthInterceptor** handles 403 auto-refresh (API returns 403 not 401)
+- **Changes API** for incremental sync (delta only)
+- **Parallel sync** via coroutines async/awaitAll
+- **PersistentSyncService** for always-on notification with next sync time
+- **M3 Expressive**: wavy progress, loading indicator, button shapes, spring motion
 
 ## Conventions
 

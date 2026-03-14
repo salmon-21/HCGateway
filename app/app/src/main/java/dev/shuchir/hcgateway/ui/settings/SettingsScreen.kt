@@ -255,6 +255,14 @@ fun SettingsScreen(
             }
 
 
+            // Version
+            Text(
+                "Version ${dev.shuchir.hcgateway.BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, top = 8.dp),
+            )
+
             // --- Account section ---
             SectionLabel("Account")
 
