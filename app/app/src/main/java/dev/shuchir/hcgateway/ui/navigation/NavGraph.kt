@@ -9,6 +9,10 @@ import androidx.compose.material3.MaterialTheme
 import soup.compose.material.motion.animation.materialSharedAxisXIn
 import soup.compose.material.motion.animation.materialSharedAxisXOut
 import soup.compose.material.motion.animation.rememberSlideDistance
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -54,8 +58,6 @@ class NavViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AuthState.Loading)
 
-    val themeMode: StateFlow<String> = preferencesRepository.themeMode
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "system")
 }
 
 @Composable
@@ -63,7 +65,6 @@ fun NavGraph(
     viewModel: NavViewModel = hiltViewModel(),
 ) {
     val authState by viewModel.authState.collectAsState()
-    val themeMode by viewModel.themeMode.collectAsState()
     val context = LocalContext.current
 
     // Start/stop persistent service based on auth state
@@ -81,7 +82,7 @@ fun NavGraph(
         }
     }
 
-    HCGatewayTheme(themeMode = themeMode) {
+    HCGatewayTheme {
         AnimatedContent(
             targetState = authState,
             transitionSpec = {

@@ -26,6 +26,13 @@ class SettingsViewModel @Inject constructor(
 
     fun updateThemeMode(mode: String) {
         viewModelScope.launch { preferencesRepository.updateThemeMode(mode) }
+        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+            when (mode) {
+                "light" -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+                "dark" -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                else -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+            }
+        )
     }
 
     fun updateSyncInterval(minutes: Int) {
