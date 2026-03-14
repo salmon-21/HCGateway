@@ -58,8 +58,14 @@ class PersistentSyncService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannels()
-        startForeground(NOTIFICATION_ID, buildPersistentNotification("Starting..."))
+        startForeground(NOTIFICATION_ID, buildPersistentNotification("Idle"))
         observeSyncState()
+        // Update with actual schedule after startup
+        scope.launch {
+            val text = getNextSyncText()
+            getSystemService(NotificationManager::class.java)
+                .notify(NOTIFICATION_ID, buildPersistentNotification(text))
+        }
     }
 
     private fun observeSyncState() {
@@ -73,19 +79,19 @@ class PersistentSyncService : Service() {
                     }
                     is SyncState.Syncing -> {
                         val text = if (state.typesCompleted > 0) {
-                            "Syncing ${state.typesCompleted}/${state.totalTypes} types"
-                        } else "Starting sync..."
+                            "${state.typesCompleted}/${state.totalTypes} types"
+                        } else "Starting..."
                         manager.notify(NOTIFICATION_ID, buildPersistentNotification(text, state.typesCompleted, state.totalTypes))
                     }
                     is SyncState.Done -> {
                         val nextSyncText = getNextSyncText()
                         manager.notify(NOTIFICATION_ID, buildPersistentNotification(nextSyncText))
-                        showResultNotification("Sync complete", "${state.recordCount} records synced")
+                        showResultNotification("Done", "${state.recordCount} records")
                     }
                     is SyncState.Error -> {
                         val nextSyncText = getNextSyncText()
                         manager.notify(NOTIFICATION_ID, buildPersistentNotification(nextSyncText))
-                        showResultNotification("Sync failed", state.message)
+                        showResultNotification("Failed", state.message)
                     }
                     is SyncState.Cancelled -> {
                         val nextSyncText = getNextSyncText()
@@ -98,14 +104,13 @@ class PersistentSyncService : Service() {
 
     private suspend fun getNextSyncText(): String {
         val settings = preferencesRepository.settings.first()
-        if (settings.lastSync > 0) {
-            val nextMillis = settings.lastSync + settings.syncInterval * 60_000L
-            val nextTime = Instant.ofEpochMilli(nextMillis)
-                .atZone(ZoneId.systemDefault())
-                .format(DateTimeFormatter.ofPattern("HH:mm"))
-            return "Next sync ~$nextTime"
-        }
-        return "Waiting for next sync"
+        if (!settings.autoSyncEnabled) return "Auto sync off"
+        val baseTime = if (settings.lastSync > 0) settings.lastSync else System.currentTimeMillis()
+        val nextMillis = baseTime + settings.syncInterval * 60_000L
+        val nextTime = Instant.ofEpochMilli(nextMillis)
+            .atZone(ZoneId.systemDefault())
+            .format(DateTimeFormatter.ofPattern("H:mm"))
+        return "Next sync: $nextTime"
     }
 
     private fun buildPersistentNotification(
