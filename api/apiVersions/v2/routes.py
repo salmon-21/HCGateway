@@ -55,9 +55,8 @@ def login():
     user = usrStore.find_one({'username': username})
 
     if not user:
-        user = usrStore.insert_one({'username': username, 'password': ph.hash(password)}).inserted_id
-        usrStore.insert_one({'_id': str(user), 'username': username, 'password': ph.hash(password)})
-        usrStore.delete_one({'_id': ObjectId(user)})
+        user = str(ObjectId())
+        usrStore.insert_one({'_id': user, 'username': username, 'password': ph.hash(password)})
 
         token = secrets.token_urlsafe(32)
         refresh = secrets.token_urlsafe(32)
@@ -343,10 +342,7 @@ def delFromDb(method):
 
     db = mongo['hcgateway_'+userid]
     collection = db[method]
-    print(collection)
     for uuid in uuids:
-        print(uuid)
-        try: collection.delete_one({"_id": uuid})
-        except Exception as e: print(e)
+        collection.delete_one({"_id": uuid})
 
     return jsonify({'success': True}), 200
