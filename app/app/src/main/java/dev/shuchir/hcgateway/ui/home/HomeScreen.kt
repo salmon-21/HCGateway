@@ -51,10 +51,14 @@ fun HomeScreen(
         viewModel.checkPermissions()
     }
 
-    // Load HC record counts when permissions are granted, and server counts
+    // Load HC record counts when permissions are granted
     LaunchedEffect(hasPermissions) {
         if (hasPermissions == true) viewModel.loadHcRecordCounts()
-        viewModel.loadServerCounts()
+    }
+
+    // Load server counts when connected
+    LaunchedEffect(serverReachable) {
+        if (serverReachable == true) viewModel.loadServerCounts()
     }
 
     Scaffold(

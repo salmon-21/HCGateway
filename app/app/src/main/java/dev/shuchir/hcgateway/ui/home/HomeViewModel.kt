@@ -119,7 +119,7 @@ class HomeViewModel @Inject constructor(
                 try {
                     val records = healthConnectRepository.readRecords(
                         type.recordClass,
-                        java.time.Instant.now().minusSeconds(30 * 24 * 60 * 60L),
+                        java.time.Instant.EPOCH,
                         java.time.Instant.now(),
                     )
                     if (records.isNotEmpty()) TypeSyncResult(type.name, records.size) else null
