@@ -64,11 +64,13 @@ fun HomeScreen(
     // Load pending counts when permissions are granted
     LaunchedEffect(hasPermissions) {
         if (hasPermissions == true) {
+            viewModel.loadPendingCounts()
+            viewModel.loadServerCounts()
             while (true) {
+                kotlinx.coroutines.delay(60_000)
                 viewModel.resetServerCounts()
                 viewModel.loadPendingCounts()
                 viewModel.loadServerCounts()
-                kotlinx.coroutines.delay(60_000)
             }
         }
     }
