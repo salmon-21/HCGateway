@@ -133,7 +133,6 @@ class SyncRepository @Inject constructor(
                             }
                         }
                     } catch (_: Exception) {
-                        // Continue with next type
                     }
                     val done = completed.incrementAndGet()
                     _syncState.value = SyncState.Syncing(type.name, done, RECORD_TYPES.size)
