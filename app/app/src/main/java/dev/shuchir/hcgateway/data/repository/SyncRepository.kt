@@ -64,6 +64,7 @@ class SyncRepository @Inject constructor(
         currentTypeResults = mutableListOf()
         currentRecordCount = 0
         val typeResults = currentTypeResults
+        val failedTypes = mutableListOf<String>()
         var totalRecords = 0
         val syncStartTime = System.currentTimeMillis()
 
@@ -74,15 +75,15 @@ class SyncRepository @Inject constructor(
                 val startTime = customStartDate.atStartOfDay(ZoneId.of("UTC")).toInstant()
                 val endTime = (customEndDate ?: LocalDate.now()).plusDays(1)
                     .atStartOfDay(ZoneId.of("UTC")).toInstant()
-                totalRecords = fullSync(startTime, endTime, typeResults)
+                totalRecords = fullSync(startTime, endTime, typeResults, failedTypes)
             } else if (settings.fullSyncMode) {
                 val startTime = Instant.now().minusSeconds(29 * 24 * 60 * 60L)
-                totalRecords = fullSync(startTime, Instant.now(), typeResults)
+                totalRecords = fullSync(startTime, Instant.now(), typeResults, failedTypes)
             } else if (settings.changesToken.isNotBlank()) {
-                totalRecords = deltaSync(settings.changesToken, typeResults)
+                totalRecords = deltaSync(settings.changesToken, typeResults, failedTypes)
             } else {
                 val startTime = Instant.now().minusSeconds(29 * 24 * 60 * 60L)
-                totalRecords = fullSync(startTime, Instant.now(), typeResults)
+                totalRecords = fullSync(startTime, Instant.now(), typeResults, failedTypes)
             }
 
             // Ensure minimum display time for progress animation
@@ -95,7 +96,7 @@ class SyncRepository @Inject constructor(
             if (typeResults.isNotEmpty()) {
                 preferencesRepository.updateLastSyncResults(gson.toJson(typeResults))
             }
-            _syncState.value = SyncState.Done(totalRecords, typeResults)
+            _syncState.value = SyncState.Done(totalRecords, typeResults, failedTypes)
         } catch (e: CancellationException) {
             // Cancelled state is set by cancel(), just save partial results
             if (typeResults.isNotEmpty()) {
@@ -111,6 +112,7 @@ class SyncRepository @Inject constructor(
         startTime: Instant,
         endTime: Instant,
         typeResults: MutableList<TypeSyncResult>,
+        failedTypes: MutableList<String> = mutableListOf(),
     ): Int {
         val completed = AtomicInteger(0)
         val totalRecordsAtomic = AtomicInteger(0)
@@ -133,6 +135,7 @@ class SyncRepository @Inject constructor(
                             }
                         }
                     } catch (_: Exception) {
+                        synchronized(failedTypes) { failedTypes.add(type.name) }
                     }
                     val done = completed.incrementAndGet()
                     _syncState.value = SyncState.Syncing(type.name, done, RECORD_TYPES.size)
@@ -151,6 +154,7 @@ class SyncRepository @Inject constructor(
     private suspend fun deltaSync(
         changesToken: String,
         typeResults: MutableList<TypeSyncResult>,
+        failedTypes: MutableList<String> = mutableListOf(),
     ): Int {
         var totalRecords = 0
 
@@ -159,7 +163,7 @@ class SyncRepository @Inject constructor(
         if (result.tokenExpired) {
             preferencesRepository.updateChangesToken("")
             val startTime = Instant.now().minusSeconds(29 * 24 * 60 * 60L)
-            return fullSync(startTime, Instant.now(), typeResults)
+            return fullSync(startTime, Instant.now(), typeResults, failedTypes)
         }
 
         val completed = AtomicInteger(0)
@@ -178,7 +182,9 @@ class SyncRepository @Inject constructor(
                             synchronized(typeResults) {
                                 typeResults.add(TypeSyncResult(typeName, records.size))
                             }
-                        } catch (_: Exception) { }
+                        } catch (_: Exception) {
+                            synchronized(failedTypes) { failedTypes.add(typeName) }
+                        }
                     }
                     val done = completed.incrementAndGet()
                     _syncState.value = SyncState.Syncing(typeName, done, totalTypes)
