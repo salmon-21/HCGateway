@@ -34,7 +34,7 @@ def before_request():
     if not user:
         return jsonify({'error': 'invalid token'}), 403
     
-    if datetime.datetime.now() > user['expiry']:
+    if datetime.datetime.now(datetime.timezone.utc) > user['expiry']:
         return jsonify({'error': 'token expired. Use /api/v2/login to reauthenticate.'}), 403
     
     g.user = user['_id']
@@ -60,7 +60,7 @@ def login():
 
         token = secrets.token_urlsafe(32)
         refresh = secrets.token_urlsafe(32)
-        expiryDate = datetime.datetime.now() + datetime.timedelta(hours=12)
+        expiryDate = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=12)
         usrStore.update_one({'_id': str(user)}, {"$set": {'token': token, 'refresh': refresh, 'expiry': expiryDate}})
 
         return jsonify({
@@ -82,10 +82,10 @@ def login():
         
     sessid = user['_id']
 
-    if not "expiry" in user or datetime.datetime.now() > user['expiry']:
+    if not "expiry" in user or datetime.datetime.now(datetime.timezone.utc) > user['expiry']:
         token = secrets.token_urlsafe(32)
         refresh = secrets.token_urlsafe(32)
-        expiryDate = datetime.datetime.now() + datetime.timedelta(hours=12)
+        expiryDate = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=12)
         usrStore.update_one({'_id': sessid}, {"$set": {'token': token, 'refresh': refresh, 'expiry': expiryDate}})
 
     else:
@@ -117,7 +117,7 @@ def refresh():
     
     token = secrets.token_urlsafe(32)
     # refresh = secrets.token_urlsafe(32) # disable refresh token rotation- design flaw, see #35
-    expiryDate = datetime.datetime.now() + datetime.timedelta(hours=12)
+    expiryDate = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=12)
     usrStore.update_one({'_id': user['_id']}, {"$set": {'token': token, 'refresh': refresh, 'expiry': expiryDate}})
 
     return jsonify({
