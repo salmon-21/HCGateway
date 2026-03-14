@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.alpha
@@ -194,12 +195,10 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Image(
-                    painter = painterResource(
-                        if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) dev.shuchir.hcgateway.R.drawable.ic_health_connect_white
-                        else dev.shuchir.hcgateway.R.drawable.ic_health_connect
-                    ),
+                    painter = painterResource(dev.shuchir.hcgateway.R.drawable.ic_health_connect),
                     contentDescription = null,
                     modifier = Modifier.size(24.dp),
+                    colorFilter = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) ColorFilter.tint(MaterialTheme.colorScheme.onSurfaceVariant) else null,
                 )
                 Spacer(Modifier.width(12.dp))
                 Text("Health Connect", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
@@ -220,6 +219,7 @@ fun SettingsScreen(
                     painter = painterResource(dev.shuchir.hcgateway.R.drawable.ic_github),
                     contentDescription = null,
                     modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.width(12.dp))
                 Text("Source code", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
@@ -236,7 +236,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.BugReport, contentDescription = null)
+                Icon(Icons.Default.BugReport, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(12.dp))
                 Text("Report a bug", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
             }
@@ -249,7 +249,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null)
+                Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(12.dp))
                 Text("Open source licenses", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
             }
