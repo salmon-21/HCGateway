@@ -9,6 +9,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.*
@@ -175,6 +177,33 @@ fun SettingsScreen(
 
             // --- About section ---
             SectionLabel("About")
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        val intent = Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS")
+                        try { context.startActivity(intent) } catch (_: Exception) {
+                            // Fallback: open Health Connect app
+                            val fallback = context.packageManager.getLaunchIntentForPackage("com.google.android.apps.healthdata")
+                            fallback?.let { context.startActivity(it) }
+                        }
+                    }
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.Start,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Image(
+                    painter = painterResource(
+                        if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) dev.shuchir.hcgateway.R.drawable.ic_health_connect_white
+                        else dev.shuchir.hcgateway.R.drawable.ic_health_connect
+                    ),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                Text("Health Connect", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+            }
 
             Row(
                 modifier = Modifier
