@@ -7,7 +7,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import dagger.hilt.android.AndroidEntryPoint
 import dev.shuchir.hcgateway.ui.navigation.NavGraph
-import dev.shuchir.hcgateway.ui.theme.HCGatewayTheme
 
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
@@ -16,9 +15,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            HCGatewayTheme {
-                NavGraph()
-            }
+            NavGraph()
         }
     }
 }
