@@ -45,11 +45,18 @@ class LoginViewModel @Inject constructor(
                 password = "",
             )
         }
-        // Clear password whenever user logs out (token removed)
+        // Re-prefill on logout (token removed) and clear password
         viewModelScope.launch {
             preferencesRepository.isLoggedIn.collect { loggedIn ->
                 if (!loggedIn) {
-                    _uiState.value = _uiState.value.copy(password = "", error = null)
+                    val s = preferencesRepository.settings.first()
+                    _uiState.value = _uiState.value.copy(
+                        serverAddress = s.apiBase,
+                        username = s.username,
+                        useHttps = s.useHttps,
+                        password = "",
+                        error = null,
+                    )
                 }
             }
         }

@@ -13,6 +13,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dev.shuchir.hcgateway.R
 import dev.shuchir.hcgateway.data.repository.SyncRepository
+import dev.shuchir.hcgateway.domain.model.SyncState
 
 @HiltWorker
 class SyncWorker @AssistedInject constructor(
@@ -24,29 +25,51 @@ class SyncWorker @AssistedInject constructor(
     companion object {
         const val CHANNEL_ID = "hcgateway_sync"
         const val NOTIFICATION_ID = 1
+        const val RESULT_NOTIFICATION_ID = 2
     }
 
     override suspend fun doWork(): Result {
+        createNotificationChannel()
+        setForeground(createProgressInfo("Syncing health data..."))
+
         return try {
-            setForeground(createForegroundInfo())
             syncRepository.sync()
+
+            when (val finalState = syncRepository.syncState.value) {
+                is SyncState.Done -> showResultNotification("Sync complete", "${finalState.recordCount} records synced")
+                is SyncState.Error -> showResultNotification("Sync failed", finalState.message)
+                else -> {}
+            }
+
             Result.success()
         } catch (e: Exception) {
+            showResultNotification("Sync failed", e.message ?: "Unknown error")
             Result.retry()
         }
     }
 
-    private fun createForegroundInfo(): ForegroundInfo {
-        createNotificationChannel()
-
+    private fun createProgressInfo(text: String): ForegroundInfo {
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setContentTitle("HCGateway")
-            .setContentText("Syncing health data...")
-            .setSmallIcon(android.R.drawable.ic_popup_sync)
+            .setContentText(text)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setOngoing(true)
+            .setProgress(0, 0, true)
             .build()
 
         return ForegroundInfo(NOTIFICATION_ID, notification)
+    }
+
+    private fun showResultNotification(title: String, text: String) {
+        val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setAutoCancel(true)
+            .build()
+
+        val manager = applicationContext.getSystemService(NotificationManager::class.java)
+        manager.notify(RESULT_NOTIFICATION_ID, notification)
     }
 
     private fun createNotificationChannel() {
