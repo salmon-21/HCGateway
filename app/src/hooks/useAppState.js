@@ -23,6 +23,7 @@ export function AppStateProvider({ children }) {
   const [taskDelay, setTaskDelay] = useState(DEFAULT_TASK_DELAY);
   const [fullSyncMode, setFullSyncMode] = useState(true);
   const [sentryEnabled, setSentryEnabled] = useState(true);
+  const [themeMode, setThemeMode] = useState('system'); // 'light' | 'dark' | 'system'
 
   const appStateRef = useRef({});
 
@@ -56,6 +57,9 @@ export function AppStateProvider({ children }) {
 
       const savedTaskDelay = await get('taskDelay');
       if (savedTaskDelay) setTaskDelay(Number(savedTaskDelay));
+
+      const savedThemeMode = await get('themeMode');
+      if (savedThemeMode) setThemeMode(savedThemeMode);
     };
 
     loadState();
@@ -176,6 +180,11 @@ export function AppStateProvider({ children }) {
     await setPlain('sentryEnabled', value.toString());
   }, []);
 
+  const updateThemeMode = useCallback(async (mode) => {
+    setThemeMode(mode);
+    await setPlain('themeMode', mode);
+  }, []);
+
   const value = {
     login,
     apiBase,
@@ -183,6 +192,7 @@ export function AppStateProvider({ children }) {
     taskDelay,
     fullSyncMode,
     sentryEnabled,
+    themeMode,
     doLogin,
     doLogout,
     doSync,
@@ -190,6 +200,7 @@ export function AppStateProvider({ children }) {
     updateTaskDelay,
     updateFullSyncMode,
     updateSentryEnabled,
+    updateThemeMode,
   };
 
   return (
