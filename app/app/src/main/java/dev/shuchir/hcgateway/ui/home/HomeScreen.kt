@@ -5,6 +5,9 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.pullToRefresh
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -57,9 +60,30 @@ fun HomeScreen(
 
     // Load pending counts when permissions are granted
     LaunchedEffect(hasPermissions) {
-        if (hasPermissions == true) viewModel.loadPendingCounts()
+        if (hasPermissions == true) {
+            while (true) {
+                viewModel.resetServerCounts()
+                viewModel.loadPendingCounts()
+                viewModel.loadServerCounts()
+                kotlinx.coroutines.delay(60_000)
+            }
+        }
     }
 
+
+    var isRefreshing by remember { mutableStateOf(true) }
+    val pullToRefreshState = rememberPullToRefreshState()
+
+    LaunchedEffect(isRefreshing) {
+        if (isRefreshing) {
+            viewModel.resetServerCounts()
+            viewModel.loadPendingCounts()
+            viewModel.loadServerCounts()
+            viewModel.checkServerConnection()
+            kotlinx.coroutines.delay(500)
+            isRefreshing = false
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -76,10 +100,15 @@ fun HomeScreen(
             )
         },
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .pullToRefresh(isRefreshing, state = pullToRefreshState, onRefresh = { isRefreshing = true }),
+        ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -343,6 +372,13 @@ fun HomeScreen(
                     )
                 }
             }
+        }
+
+        PullToRefreshDefaults.LoadingIndicator(
+            state = pullToRefreshState,
+            isRefreshing = isRefreshing,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
         }
     }
 

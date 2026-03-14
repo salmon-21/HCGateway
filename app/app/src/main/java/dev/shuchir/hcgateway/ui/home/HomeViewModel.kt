@@ -143,6 +143,10 @@ class HomeViewModel @Inject constructor(
     private val _serverCounts = MutableStateFlow<Map<String, Int>?>(null)
     val serverCounts: StateFlow<Map<String, Int>?> = _serverCounts.asStateFlow()
 
+    fun resetServerCounts() {
+        _serverCounts.value = null
+    }
+
     fun loadServerCounts() {
         viewModelScope.launch {
             try {
