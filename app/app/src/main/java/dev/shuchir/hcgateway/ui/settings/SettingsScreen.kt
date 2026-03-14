@@ -3,19 +3,24 @@ package dev.shuchir.hcgateway.ui.settings
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.ui.res.painterResource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -34,9 +39,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onNavigateToLicenses: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
-    val settings by viewModel.settings.collectAsState()
+    val settingsNullable by viewModel.settings.collectAsState()
+    val settings = settingsNullable ?: return
     val context = LocalContext.current
     var showLogoutConfirm by remember { mutableStateOf(false) }
 
@@ -205,6 +212,19 @@ fun SettingsScreen(
                 Text("Report a bug", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
             }
 
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToLicenses() }
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.Start,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null)
+                Spacer(Modifier.width(12.dp))
+                Text("Open source licenses", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+            }
+
 
             // --- Account section ---
             SectionLabel("Account")
@@ -282,10 +302,14 @@ private fun SyncIntervalPicker(
     currentMinutes: Int,
     onIntervalChange: (Int) -> Unit,
 ) {
-    val isCustom = currentMinutes !in INTERVAL_PRESETS
+    // Local state for immediate UI update (avoids DataStore round-trip flash)
+    var localMinutes by remember { mutableIntStateOf(currentMinutes) }
+    LaunchedEffect(currentMinutes) { localMinutes = currentMinutes }
+
+    val isCustom = localMinutes !in INTERVAL_PRESETS
     var showCustomInput by remember { mutableStateOf(isCustom) }
-    var customText by remember(currentMinutes) {
-        mutableStateOf(if (isCustom) formatIntervalInput(currentMinutes) else "")
+    var customText by remember(localMinutes) {
+        mutableStateOf(if (isCustom) formatIntervalInput(localMinutes) else "")
     }
 
     FlowRow(
@@ -293,19 +317,38 @@ private fun SyncIntervalPicker(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         INTERVAL_PRESETS.forEach { minutes ->
+            val isSelected = localMinutes == minutes && !showCustomInput
             FilterChip(
-                selected = currentMinutes == minutes && !showCustomInput,
+                modifier = Modifier.animateContentSize(MaterialTheme.motionScheme.fastSpatialSpec()),
+                selected = isSelected,
                 onClick = {
+                    localMinutes = minutes
                     showCustomInput = false
                     onIntervalChange(minutes)
                 },
-                label = { Text(formatInterval(minutes)) },
+                label = { Text(formatInterval(minutes), maxLines = 1, softWrap = false) },
+                leadingIcon = {
+                    Box(Modifier.animateContentSize(MaterialTheme.motionScheme.fastSpatialSpec())) {
+                        if (isSelected) {
+                            Icon(Icons.Filled.Done, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize))
+                        }
+                    }
+                },
             )
         }
+        val customSelected = showCustomInput || isCustom
         FilterChip(
-            selected = showCustomInput || isCustom,
+            modifier = Modifier.animateContentSize(MaterialTheme.motionScheme.fastSpatialSpec()),
+            selected = customSelected,
             onClick = { showCustomInput = true },
-            label = { Text("Custom") },
+            label = { Text("Custom", maxLines = 1, softWrap = false) },
+            leadingIcon = {
+                Box(Modifier.animateContentSize(MaterialTheme.motionScheme.fastSpatialSpec())) {
+                    if (customSelected) {
+                        Icon(Icons.Filled.Done, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize))
+                    }
+                }
+            },
         )
     }
 

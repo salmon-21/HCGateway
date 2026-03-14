@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
+    alias(libs.plugins.aboutlibraries)
 }
 
 android {
@@ -47,6 +48,11 @@ android {
         buildConfig = true
     }
 }
+
+aboutLibraries {
+    registerAndroidTasks = true
+}
+
 
 dependencies {
     // Compose
@@ -101,6 +107,9 @@ dependencies {
     // Core
     implementation(libs.core.ktx)
     implementation(libs.core.splashscreen)
+
+    // AboutLibraries
+    implementation(libs.aboutlibraries.core)
 }
 
 tasks.whenTaskAdded {
