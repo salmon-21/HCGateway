@@ -323,7 +323,7 @@ fun HomeScreen(
                             .atZone(ZoneId.systemDefault())
                             .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
                         Text(
-                            "Last synced $lastSyncTime",
+                            "Last synced: $lastSyncTime",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 8.dp),
