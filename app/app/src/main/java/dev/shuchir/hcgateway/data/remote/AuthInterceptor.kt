@@ -13,6 +13,9 @@ class AuthInterceptor @Inject constructor(
     private val apiServiceProvider: dagger.Lazy<ApiService>,
 ) : Interceptor {
 
+    private val refreshLock = Any()
+    @Volatile private var lastRefreshToken: String? = null
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
 
@@ -34,18 +37,30 @@ class AuthInterceptor @Inject constructor(
         if (response.code == 403 && request.header("X-Retry") == null) {
             response.close()
 
-            val refreshToken = settingsCache.refreshToken
-            if (refreshToken.isBlank()) return response
-
-            val newToken = runBlocking {
-                try {
-                    val result = apiServiceProvider.get().refresh(RefreshRequest(refreshToken))
-                    if (result.isSuccessful && result.body() != null) {
-                        val body = result.body()!!
-                        preferencesRepository.saveTokens(body.token, body.refresh)
-                        body.token
-                    } else null
-                } catch (_: Exception) { null }
+            val newToken = synchronized(refreshLock) {
+                // Check if another thread already refreshed
+                val currentToken = settingsCache.token
+                if (currentToken != token && currentToken.isNotBlank()) {
+                    // Token was already refreshed by another request
+                    currentToken
+                } else {
+                    // We need to refresh
+                    val refreshToken = settingsCache.refreshToken
+                    if (refreshToken.isBlank() || refreshToken == lastRefreshToken) null
+                    else {
+                        runBlocking {
+                            try {
+                                val result = apiServiceProvider.get().refresh(RefreshRequest(refreshToken))
+                                if (result.isSuccessful && result.body() != null) {
+                                    val body = result.body()!!
+                                    lastRefreshToken = refreshToken
+                                    preferencesRepository.saveTokens(body.token, body.refresh)
+                                    body.token
+                                } else null
+                            } catch (_: Exception) { null }
+                        }
+                    }
+                }
             }
 
             if (newToken != null) {
