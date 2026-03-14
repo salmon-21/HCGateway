@@ -161,6 +161,30 @@ fun SettingsScreen(
             }
 
 
+            // --- Privacy section ---
+            SectionLabel("Privacy")
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Error reporting", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+                    Text(
+                        "Send crash reports via Sentry",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = settings.sentryEnabled,
+                    onCheckedChange = viewModel::updateSentryEnabled,
+                )
+            }
+
             // --- Appearance section ---
             SectionLabel("Appearance")
 
