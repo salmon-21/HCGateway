@@ -71,6 +71,7 @@ class PermissionOnboardingViewModel @Inject constructor(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun PermissionOnboardingScreen(
     onNext: () -> Unit,
@@ -191,6 +192,7 @@ fun PermissionOnboardingScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = allDone,
+                shapes = ButtonDefaults.shapes(),
             ) {
                 Text("Next")
             }
@@ -203,6 +205,7 @@ fun PermissionOnboardingScreen(
                     onNext()
                 },
                 modifier = Modifier.fillMaxWidth(),
+                shapes = ButtonDefaults.shapes(),
             ) {
                 Text("Skip")
             }
@@ -210,6 +213,7 @@ fun PermissionOnboardingScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun PermissionRow(
     icon: @Composable () -> Unit,
@@ -231,7 +235,7 @@ private fun PermissionRow(
         if (granted) {
             Icon(Icons.Default.Check, contentDescription = "Granted", tint = MaterialTheme.colorScheme.primary)
         } else {
-            FilledTonalButton(onClick = onRequest) {
+            FilledTonalButton(onClick = onRequest, shapes = ButtonDefaults.shapes()) {
                 Text("Grant")
             }
         }
