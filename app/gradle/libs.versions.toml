@@ -69,6 +69,9 @@ sentry = { group = "io.sentry", name = "sentry-android", version.ref = "sentry" 
 core-ktx = { group = "androidx.core", name = "core-ktx", version = "1.15.0" }
 core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version = "1.0.1" }
 
+# AboutLibraries (core only, UI is custom)
+aboutlibraries-core = { group = "com.mikepenz", name = "aboutlibraries-core", version = "11.6.3" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
@@ -76,3 +79,4 @@ compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 google-services = { id = "com.google.gms.google-services", version = "4.4.2" }
+aboutlibraries = { id = "com.mikepenz.aboutlibraries.plugin", version = "11.6.3" }
