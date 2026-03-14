@@ -9,6 +9,7 @@ import dev.shuchir.hcgateway.data.repository.AuthRepository
 import dev.shuchir.hcgateway.worker.SyncScheduler
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -40,6 +41,18 @@ class SettingsViewModel @Inject constructor(
 
     fun updateStartOnBoot(enabled: Boolean) {
         viewModelScope.launch { preferencesRepository.updateStartOnBoot(enabled) }
+    }
+
+    fun updateAutoSyncEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updateAutoSyncEnabled(enabled)
+            if (enabled) {
+                val interval = preferencesRepository.settings.first().syncInterval
+                syncScheduler.schedule(interval)
+            } else {
+                syncScheduler.cancel()
+            }
+        }
     }
 
     fun logout() {
