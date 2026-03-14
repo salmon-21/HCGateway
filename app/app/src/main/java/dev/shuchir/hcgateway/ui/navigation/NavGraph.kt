@@ -5,9 +5,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.unit.IntOffset
+import soup.compose.material.motion.animation.materialSharedAxisXIn
+import soup.compose.material.motion.animation.materialSharedAxisXOut
+import soup.compose.material.motion.animation.rememberSlideDistance
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -100,22 +101,19 @@ fun NavGraph(
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun AuthenticatedNavGraph() {
     val navController = rememberNavController()
-    val spatialSpec = MaterialTheme.motionScheme.slowSpatialSpec<IntOffset>()
-    val effectsSpec = MaterialTheme.motionScheme.slowEffectsSpec<Float>()
-    val popSpatialSpec = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
+    val slideDistance = rememberSlideDistance()
 
     NavHost(
         navController = navController,
         startDestination = "home",
         modifier = Modifier.background(MaterialTheme.colorScheme.surface),
-        enterTransition = { slideInHorizontally(spatialSpec) { it / 4 } + fadeIn(effectsSpec) },
-        exitTransition = { slideOutHorizontally(spatialSpec) { -it / 4 } + fadeOut(effectsSpec) },
-        popEnterTransition = { slideInHorizontally(popSpatialSpec) { -it / 4 } + fadeIn(effectsSpec) },
-        popExitTransition = { slideOutHorizontally(popSpatialSpec) { it / 4 } + fadeOut(effectsSpec) },
+        enterTransition = { materialSharedAxisXIn(forward = true, slideDistance = slideDistance) },
+        exitTransition = { materialSharedAxisXOut(forward = true, slideDistance = slideDistance) },
+        popEnterTransition = { materialSharedAxisXIn(forward = false, slideDistance = slideDistance) },
+        popExitTransition = { materialSharedAxisXOut(forward = false, slideDistance = slideDistance) },
     ) {
         composable("home") {
             HomeScreen(

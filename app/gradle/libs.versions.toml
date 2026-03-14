@@ -72,6 +72,9 @@ core-splashscreen = { group = "androidx.core", name = "core-splashscreen", versi
 # AboutLibraries (core only, UI is custom)
 aboutlibraries-core = { group = "com.mikepenz", name = "aboutlibraries-core", version = "11.6.3" }
 
+# Material Motion
+material-motion = { group = "io.github.fornewid", name = "material-motion-compose-core", version = "2.0.1" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
