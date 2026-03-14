@@ -52,7 +52,7 @@ val LightExtendedColors = ExtendedColors(
     success = Color(0xFF386A20),
     onSuccess = Color(0xFFFFFFFF),
     successContainer = Color(0xFFB8F397),
-    onSuccessContainer = Color(0xFF042100),
+    onSuccessContainer = Color(0xFF1B5E20),
 )
 
 val DarkExtendedColors = ExtendedColors(
