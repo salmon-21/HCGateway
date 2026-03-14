@@ -375,8 +375,9 @@ fun HomeScreen(
                     )
                 }
 
-                // Data overview (always shown when available)
-                if (settings.lastSync > 0 || serverCounts != null) {
+                // Data overview
+                val showTable = settings.lastSync > 0 || serverCounts == null || serverCounts?.isNotEmpty() == true
+                if (showTable) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
                     if (settings.lastSync > 0) {
                         val lastSyncTime = Instant.ofEpochMilli(settings.lastSync)
