@@ -361,24 +361,25 @@ fun HomeScreen(
                             modifier = Modifier.padding(bottom = 8.dp),
                         )
                     }
-                    Crossfade(
-                        targetState = serverCounts != null,
-                        label = "tableAnim",
-                        modifier = Modifier.then(
-                            if (viewModel.tableHeightPx > 0) Modifier.heightIn(min = with(LocalDensity.current) { viewModel.tableHeightPx.toDp() })
-                            else Modifier
-                        ),
-                    ) { loaded ->
-                        if (loaded) {
-                            Column(modifier = Modifier.onGloballyPositioned { viewModel.tableHeightPx = it.size.height }) {
-                                DataOverviewTable(pendingCounts, serverCounts, hasEverSynced = settings.lastSync > 0)
-                            }
-                        } else {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.Center,
-                            ) {
-                                LoadingIndicator(modifier = Modifier.size(32.dp))
+                    val density = LocalDensity.current
+                    val tableHeightPx by viewModel.tableHeightPx.collectAsState()
+                    val minHeight = with(density) { tableHeightPx.toDp() }
+                    Box(modifier = Modifier.defaultMinSize(minHeight = minHeight)) {
+                        Crossfade(
+                            targetState = serverCounts != null,
+                            label = "tableAnim",
+                        ) { loaded ->
+                            if (loaded) {
+                                Column(modifier = Modifier.onGloballyPositioned { viewModel.updateTableHeight(it.size.height) }) {
+                                    DataOverviewTable(pendingCounts, serverCounts, hasEverSynced = settings.lastSync > 0)
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = minHeight),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    LoadingIndicator(modifier = Modifier.size(32.dp))
+                                }
                             }
                         }
                     }
