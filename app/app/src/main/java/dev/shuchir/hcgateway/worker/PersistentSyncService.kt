@@ -86,7 +86,12 @@ class PersistentSyncService : Service() {
                     is SyncState.Done -> {
                         val nextSyncText = getNextSyncText()
                         manager.notify(NOTIFICATION_ID, buildPersistentNotification(nextSyncText))
-                        showResultNotification("Done", "${state.recordCount} records")
+                        val text = if (state.failedTypes.isNotEmpty()) {
+                            "${state.recordCount} records, ${state.failedTypes.size} failed"
+                        } else {
+                            "${state.recordCount} records"
+                        }
+                        showResultNotification("Done", text)
                     }
                     is SyncState.Error -> {
                         val nextSyncText = getNextSyncText()
