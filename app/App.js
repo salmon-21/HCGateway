@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useColorScheme } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Sentry from '@sentry/react-native';
 import Toast from 'react-native-toast-message';
@@ -23,19 +24,29 @@ function AppContent() {
   return login ? <HomeScreen /> : <LoginScreen />;
 }
 
-export default Sentry.wrap(function App() {
+function ThemedApp() {
+  const { themeMode } = useAppState();
+  const systemScheme = useColorScheme();
   const { theme: materialTheme } = useMaterial3Theme();
-  const theme = useMemo(() => createTheme(materialTheme), [materialTheme]);
+
+  const isDark = themeMode === 'dark' || (themeMode === 'system' && systemScheme === 'dark');
+  const theme = useMemo(() => createTheme(materialTheme, isDark), [materialTheme, isDark]);
 
   return (
+    <PaperProvider theme={theme}>
+      <AppContent />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <Toast />
+    </PaperProvider>
+  );
+}
+
+export default Sentry.wrap(function App() {
+  return (
     <SafeAreaProvider>
-      <PaperProvider theme={theme}>
-        <AppStateProvider>
-          <AppContent />
-          <StatusBar style="dark" />
-          <Toast />
-        </AppStateProvider>
-      </PaperProvider>
+      <AppStateProvider>
+        <ThemedApp />
+      </AppStateProvider>
     </SafeAreaProvider>
   );
 });

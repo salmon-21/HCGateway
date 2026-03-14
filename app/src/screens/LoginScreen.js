@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
-import { Text, TextInput, Button, Card, useTheme } from 'react-native-paper';
+import { Text, TextInput, Button, Card, SegmentedButtons, useTheme } from 'react-native-paper';
 import M3Switch from '../components/M3Switch';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppState } from '../hooks/useAppState';
 
 export default function LoginScreen() {
   const [form, setForm] = useState({});
-  const { apiBase, sentryEnabled, doLogin, updateApiBase, updateSentryEnabled } = useAppState();
+  const { apiBase, sentryEnabled, themeMode, doLogin, updateApiBase, updateSentryEnabled, updateThemeMode } = useAppState();
   const theme = useTheme();
 
   return (
@@ -24,7 +24,7 @@ export default function LoginScreen() {
             </Text>
           </View>
 
-          <Card style={styles.card} mode="contained">
+          <Card style={styles.card} mode="elevated">
             <Card.Content style={styles.cardContent}>
               <Text variant="titleMedium" style={styles.sectionTitle}>Login</Text>
               <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 16 }}>
@@ -36,7 +36,7 @@ export default function LoginScreen() {
                 mode="outlined"
                 onChangeText={(text) => setForm((prev) => ({ ...prev, username: text }))}
                 style={[styles.input, { backgroundColor: 'transparent' }]}
-                theme={{ colors: { background: theme.colors.surfaceVariant } }}
+                theme={{ colors: { background: theme.colors.elevation.level1 } }}
               />
               <TextInput
                 label="Password"
@@ -44,7 +44,7 @@ export default function LoginScreen() {
                 secureTextEntry
                 onChangeText={(text) => setForm((prev) => ({ ...prev, password: text }))}
                 style={[styles.input, { backgroundColor: 'transparent' }]}
-                theme={{ colors: { background: theme.colors.surfaceVariant } }}
+                theme={{ colors: { background: theme.colors.elevation.level1 } }}
               />
               <TextInput
                 label="API Base URL"
@@ -52,13 +52,25 @@ export default function LoginScreen() {
                 defaultValue={apiBase}
                 onChangeText={updateApiBase}
                 style={[styles.input, { backgroundColor: 'transparent' }]}
-                theme={{ colors: { background: theme.colors.surfaceVariant } }}
+                theme={{ colors: { background: theme.colors.elevation.level1 } }}
               />
 
               <View style={styles.switchRow}>
                 <Text variant="bodyLarge">Enable Sentry</Text>
                 <M3Switch value={sentryEnabled} onValueChange={updateSentryEnabled} />
               </View>
+
+              <Text variant="bodyLarge" style={{ marginBottom: 8 }}>Theme</Text>
+              <SegmentedButtons
+                value={themeMode}
+                onValueChange={updateThemeMode}
+                buttons={[
+                  { value: 'light', label: 'Light', icon: 'white-balance-sunny' },
+                  { value: 'system', label: 'System', icon: 'cellphone' },
+                  { value: 'dark', label: 'Dark', icon: 'moon-waning-crescent' },
+                ]}
+                style={{ marginBottom: 12 }}
+              />
 
               <Button
                 mode="contained"
@@ -118,7 +130,7 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     marginTop: 8,
-    borderRadius: 12,
+    borderRadius: 999,
   },
   buttonContent: {
     paddingVertical: 6,
