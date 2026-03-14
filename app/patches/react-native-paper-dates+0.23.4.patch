@@ -1,0 +1,220 @@
+diff --git a/node_modules/react-native-paper-dates/lib/commonjs/Date/CalendarEdit.js b/node_modules/react-native-paper-dates/lib/commonjs/Date/CalendarEdit.js
+index 41408c2..8d22981 100644
+--- a/node_modules/react-native-paper-dates/lib/commonjs/Date/CalendarEdit.js
++++ b/node_modules/react-native-paper-dates/lib/commonjs/Date/CalendarEdit.js
+@@ -74,7 +74,7 @@ function CalendarEdit({
+       withDateFormatInLabel: withDateFormatInLabel,
+       placeholder: placeholder
+     }) : null, mode === 'range' ? /*#__PURE__*/(0, _jsxRuntime.jsxs)(_reactNative.View, {
+-      style: _styles.sharedStyles.flexDirectionRow,
++      style: styles.rangeRow,
+       children: [/*#__PURE__*/(0, _jsxRuntime.jsx)(_DatePickerInputWithoutModal.default, {
+         inputMode: "start",
+         ref: startInput,
+@@ -122,8 +122,11 @@ const styles = _reactNative.StyleSheet.create({
+   root: {
+     padding: 12
+   },
++  rangeRow: {
++    flexDirection: 'column',
++  },
+   separator: {
+-    width: 12
++    height: 8
+   }
+ });
+ var _default = exports.default = /*#__PURE__*/(0, _react.memo)(CalendarEdit);
+diff --git a/node_modules/react-native-paper-dates/lib/commonjs/Date/DatePickerInputWithoutModal.js b/node_modules/react-native-paper-dates/lib/commonjs/Date/DatePickerInputWithoutModal.js
+index 071890a..6c3560f 100644
+--- a/node_modules/react-native-paper-dates/lib/commonjs/Date/DatePickerInputWithoutModal.js
++++ b/node_modules/react-native-paper-dates/lib/commonjs/Date/DatePickerInputWithoutModal.js
+@@ -117,21 +117,18 @@ function getLabel({
+ }
+ const styles = _reactNative.StyleSheet.create({
+   root: {
+-    flexGrow: 1,
++    flex: 1,
+     justifyContent: 'center',
+     alignItems: 'flex-start',
+-    width: '100%'
+   },
+   inputContainer: {
+-    flexGrow: 1,
++    flex: 1,
+     flexDirection: 'row',
+     alignItems: 'center',
+     justifyContent: 'flex-start',
+-    width: '100%'
+   },
+   input: {
+-    flexGrow: 1,
+-    width: '100%'
++    flex: 1,
+   }
+ });
+ var _default = exports.default = /*#__PURE__*/(0, _react.forwardRef)(DatePickerInputWithoutModal);
+diff --git a/node_modules/react-native-paper-dates/lib/module/Date/CalendarEdit.js b/node_modules/react-native-paper-dates/lib/module/Date/CalendarEdit.js
+index f1423bc..bb0ce35 100644
+--- a/node_modules/react-native-paper-dates/lib/module/Date/CalendarEdit.js
++++ b/node_modules/react-native-paper-dates/lib/module/Date/CalendarEdit.js
+@@ -69,46 +69,52 @@ function CalendarEdit({
+       withDateFormatInLabel: withDateFormatInLabel,
+       placeholder: placeholder
+     }) : null, mode === 'range' ? /*#__PURE__*/_jsxs(View, {
+-      style: sharedStyles.flexDirectionRow,
+-      children: [/*#__PURE__*/_jsx(DatePickerInputWithoutModal, {
+-        inputMode: "start",
+-        ref: startInput,
+-        mode: "outlined",
+-        label: startLabel,
+-        value: state.startDate,
+-        onChange: startDate => onChange({
+-          ...state,
+-          startDate
+-        }),
+-        returnKeyType: 'next',
+-        onSubmitEditing: onSubmitStartInput,
+-        validRange: validRange,
+-        locale: locale,
+-        withModal: false,
+-        autoComplete: 'off',
+-        inputEnabled: inputEnabled,
+-        withDateFormatInLabel: withDateFormatInLabel,
+-        placeholder: placeholder
++      style: styles.rangeRow,
++      children: [/*#__PURE__*/_jsx(View, {
++        style: styles.rangeInput,
++        children: /*#__PURE__*/_jsx(DatePickerInputWithoutModal, {
++          inputMode: "start",
++          ref: startInput,
++          mode: "outlined",
++          label: startLabel,
++          value: state.startDate,
++          onChange: startDate => onChange({
++            ...state,
++            startDate
++          }),
++          returnKeyType: 'next',
++          onSubmitEditing: onSubmitStartInput,
++          validRange: validRange,
++          locale: locale,
++          withModal: false,
++          autoComplete: 'off',
++          inputEnabled: inputEnabled,
++          withDateFormatInLabel: withDateFormatInLabel,
++          placeholder: placeholder
++        })
+       }), /*#__PURE__*/_jsx(View, {
+         style: styles.separator
+-      }), /*#__PURE__*/_jsx(DatePickerInputWithoutModal, {
+-        inputMode: "end",
+-        ref: endInput,
+-        mode: "outlined",
+-        label: endLabel,
+-        value: state.endDate,
+-        onChange: endDate => onChange({
+-          ...state,
+-          endDate
+-        }),
+-        onSubmitEditing: onSubmitEndInput,
+-        validRange: validRange,
+-        locale: locale,
+-        withModal: false,
+-        autoComplete: "off",
+-        inputEnabled: inputEnabled,
+-        withDateFormatInLabel: withDateFormatInLabel,
+-        placeholder: placeholder
++      }), /*#__PURE__*/_jsx(View, {
++        style: styles.rangeInput,
++        children: /*#__PURE__*/_jsx(DatePickerInputWithoutModal, {
++          inputMode: "end",
++          ref: endInput,
++          mode: "outlined",
++          label: endLabel,
++          value: state.endDate,
++          onChange: endDate => onChange({
++            ...state,
++            endDate
++          }),
++          onSubmitEditing: onSubmitEndInput,
++          validRange: validRange,
++          locale: locale,
++          withModal: false,
++          autoComplete: "off",
++          inputEnabled: inputEnabled,
++          withDateFormatInLabel: withDateFormatInLabel,
++          placeholder: placeholder
++        })
+       })]
+     }) : null]
+   });
+@@ -117,8 +123,13 @@ const styles = StyleSheet.create({
+   root: {
+     padding: 12
+   },
++  rangeRow: {
++    flexDirection: 'column',
++  },
++  rangeInput: {
++  },
+   separator: {
+-    width: 12
++    height: 8
+   }
+ });
+ export default /*#__PURE__*/memo(CalendarEdit);
+diff --git a/node_modules/react-native-paper-dates/lib/module/Date/DatePickerInputWithoutModal.js b/node_modules/react-native-paper-dates/lib/module/Date/DatePickerInputWithoutModal.js
+index 916eced..e8a0e48 100644
+--- a/node_modules/react-native-paper-dates/lib/module/Date/DatePickerInputWithoutModal.js
++++ b/node_modules/react-native-paper-dates/lib/module/Date/DatePickerInputWithoutModal.js
+@@ -112,21 +112,18 @@ function getLabel({
+ }
+ const styles = StyleSheet.create({
+   root: {
+-    flexGrow: 1,
++    flex: 1,
+     justifyContent: 'center',
+     alignItems: 'flex-start',
+-    width: '100%'
+   },
+   inputContainer: {
+-    flexGrow: 1,
++    flex: 1,
+     flexDirection: 'row',
+     alignItems: 'center',
+     justifyContent: 'flex-start',
+-    width: '100%'
+   },
+   input: {
+-    flexGrow: 1,
+-    width: '100%'
++    flex: 1,
+   }
+ });
+ export default /*#__PURE__*/forwardRef(DatePickerInputWithoutModal);
+diff --git a/node_modules/react-native-paper-dates/src/Date/CalendarEdit.tsx b/node_modules/react-native-paper-dates/src/Date/CalendarEdit.tsx
+index 5660c3a..e11d2ab 100644
+--- a/node_modules/react-native-paper-dates/src/Date/CalendarEdit.tsx
++++ b/node_modules/react-native-paper-dates/src/Date/CalendarEdit.tsx
+@@ -102,7 +102,7 @@ function CalendarEdit({
+         />
+       ) : null}
+       {mode === 'range' ? (
+-        <View style={sharedStyles.flexDirectionRow}>
++        <View style={styles.rangeColumn}>
+           <DatePickerInputWithoutModal
+             inputMode="start"
+             ref={startInput}
+@@ -147,8 +147,11 @@ const styles = StyleSheet.create({
+   root: {
+     padding: 12,
+   },
++  rangeColumn: {
++    flexDirection: 'column',
++  },
+   separator: {
+-    width: 12,
++    height: 8,
+   },
+ })
+ 

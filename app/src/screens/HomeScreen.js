@@ -105,7 +105,8 @@ export default function HomeScreen() {
               mode="outlined"
               defaultValue={apiBase}
               onChangeText={updateApiBase}
-              style={styles.input}
+              style={[styles.input, { backgroundColor: 'transparent' }]}
+              theme={{ colors: { background: theme.colors.surfaceVariant } }}
             />
 
             <TextInput
@@ -117,7 +118,8 @@ export default function HomeScreen() {
                 const hours = Number(text);
                 if (hours > 0) updateTaskDelay(hours);
               }}
-              style={styles.input}
+              style={[styles.input, { backgroundColor: 'transparent' }]}
+              theme={{ colors: { background: theme.colors.surfaceVariant } }}
             />
 
             <Divider style={styles.divider} />
