@@ -45,11 +45,21 @@ class HealthConnectRepository @Inject constructor(
         endTime: Instant,
     ): List<Record> {
         val client = healthConnectClient ?: return emptyList()
-        val request = ReadRecordsRequest(
-            recordType = recordClass,
-            timeRangeFilter = TimeRangeFilter.between(startTime, endTime),
-        )
-        return client.readRecords(request).records
+        val allRecords = mutableListOf<Record>()
+        var pageToken: String? = null
+
+        do {
+            val request = ReadRecordsRequest(
+                recordType = recordClass,
+                timeRangeFilter = TimeRangeFilter.between(startTime, endTime),
+                pageToken = pageToken,
+            )
+            val response = client.readRecords(request)
+            allRecords.addAll(response.records)
+            pageToken = response.pageToken
+        } while (pageToken != null)
+
+        return allRecords
     }
 
     fun recordsToJson(records: List<Record>): JsonElement {
