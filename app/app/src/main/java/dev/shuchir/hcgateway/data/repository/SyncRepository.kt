@@ -34,6 +34,8 @@ class SyncRepository @Inject constructor(
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
 
     private var syncJob: Job? = null
+    private var currentTypeResults = mutableListOf<TypeSyncResult>()
+    private var currentRecordCount = 0
 
     val isSyncing: Boolean get() = syncJob?.isActive == true
 
@@ -45,7 +47,7 @@ class SyncRepository @Inject constructor(
     fun cancel() {
         syncJob?.cancel()
         syncJob = null
-        _syncState.value = SyncState.Idle
+        _syncState.value = SyncState.Cancelled(currentRecordCount, currentTypeResults.toList())
     }
 
     fun setSyncJob(job: Job) {
@@ -54,7 +56,9 @@ class SyncRepository @Inject constructor(
 
     private suspend fun performSync(customStartDate: LocalDate?, customEndDate: LocalDate?) {
         _syncState.value = SyncState.Syncing("", 0, RECORD_TYPES.size)
-        val typeResults = mutableListOf<TypeSyncResult>()
+        currentTypeResults = mutableListOf()
+        currentRecordCount = 0
+        val typeResults = currentTypeResults
         var totalRecords = 0
 
         try {
@@ -81,7 +85,10 @@ class SyncRepository @Inject constructor(
             }
             _syncState.value = SyncState.Done(totalRecords, typeResults)
         } catch (e: CancellationException) {
-            _syncState.value = SyncState.Idle
+            // Cancelled state is set by cancel(), just save partial results
+            if (typeResults.isNotEmpty()) {
+                preferencesRepository.updateLastSyncResults(gson.toJson(typeResults))
+            }
             throw e
         } catch (e: Exception) {
             _syncState.value = SyncState.Error(e.message ?: "Sync failed")
@@ -119,6 +126,7 @@ class SyncRepository @Inject constructor(
                     val json = healthConnectRepository.recordsToJson(records)
                     apiService.syncRecords(typeName, SyncRequest(json))
                     totalRecords += records.size
+                    currentRecordCount = totalRecords
                     typeResults.add(TypeSyncResult(typeName, records.size))
                 } catch (e: Exception) {
                     // Continue with next type
@@ -158,6 +166,7 @@ class SyncRepository @Inject constructor(
                     val json = healthConnectRepository.recordsToJson(records)
                     apiService.syncRecords(typeName, SyncRequest(json))
                     totalRecords += records.size
+                    currentRecordCount = totalRecords
                     typeResults.add(TypeSyncResult(typeName, records.size))
                 } catch (_: Exception) { }
             }

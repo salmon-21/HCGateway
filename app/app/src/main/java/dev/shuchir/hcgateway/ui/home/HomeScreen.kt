@@ -16,14 +16,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import dev.shuchir.hcgateway.domain.model.TypeSyncResult
 import androidx.health.connect.client.PermissionController
 import androidx.hilt.navigation.compose.hiltViewModel
 import dev.shuchir.hcgateway.domain.model.SyncState
 import dev.shuchir.hcgateway.ui.components.FilledCard
-import dev.shuchir.hcgateway.ui.components.SyncWarningDialog
 import dev.shuchir.hcgateway.ui.theme.ExtendedTheme
 import java.time.Instant
 import java.time.ZoneId
@@ -40,8 +37,9 @@ fun HomeScreen(
     val syncState by viewModel.syncState.collectAsState()
     val hasPermissions by viewModel.hasPermissions.collectAsState()
     val serverReachable by viewModel.serverReachable.collectAsState()
+    val hcRecordCounts by viewModel.hcRecordCounts.collectAsState()
+    val serverCounts by viewModel.serverCounts.collectAsState()
     var showDatePicker by remember { mutableStateOf(false) }
-    var showSyncWarning by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract(),
@@ -51,6 +49,12 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         viewModel.checkPermissions()
+    }
+
+    // Load HC record counts when permissions are granted, and server counts
+    LaunchedEffect(hasPermissions) {
+        if (hasPermissions == true) viewModel.loadHcRecordCounts()
+        viewModel.loadServerCounts()
     }
 
     Scaffold(
@@ -143,7 +147,14 @@ fun HomeScreen(
             FilledCard(tonalElevation = true) {
                 // Auto-dismiss Done state
                 LaunchedEffect(syncState) {
-                    if (syncState is SyncState.Done) viewModel.resetSyncState()
+                    when (syncState) {
+                        is SyncState.Done, is SyncState.Cancelled -> {
+                            viewModel.loadServerCounts()
+                            viewModel.loadHcRecordCounts()
+                            viewModel.resetSyncState()
+                        }
+                        else -> {}
+                    }
                 }
 
                 // Sync status / actions
@@ -169,6 +180,7 @@ fun HomeScreen(
                         ) { Text("Cancel") }
                     }
                     is SyncState.Done -> { /* auto-dismissed above */ }
+                    is SyncState.Cancelled -> { /* auto-dismissed above */ }
                     is SyncState.Error -> {
                         Text("Sync", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
                         Text("Error: ${state.message}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
@@ -185,8 +197,7 @@ fun HomeScreen(
                         ) {
                             Button(
                                 onClick = {
-                                    if (!settings.fullSyncMode && settings.lastSync == 0L) showSyncWarning = true
-                                    else viewModel.syncNow()
+                                    viewModel.syncNow()
                                 },
                                 modifier = Modifier.weight(1f),
                                 enabled = hasPermissions == true,
@@ -206,24 +217,21 @@ fun HomeScreen(
                             }
                         }
 
-                        // Show persisted last sync results
-                        if (settings.lastSync > 0) {
+                        // Show data overview: HC vs Server
+                        if (hcRecordCounts.isNotEmpty() || serverCounts.isNotEmpty()) {
                             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-                            val lastSyncTime = Instant.ofEpochMilli(settings.lastSync)
-                                .atZone(ZoneId.systemDefault())
-                                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
-                            Text(
-                                "Last synced $lastSyncTime",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 8.dp),
-                            )
-                            val savedResults = remember(settings.lastSyncResults) {
-                                parseSyncResults(settings.lastSyncResults)
+                            if (settings.lastSync > 0) {
+                                val lastSyncTime = Instant.ofEpochMilli(settings.lastSync)
+                                    .atZone(ZoneId.systemDefault())
+                                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+                                Text(
+                                    "Last synced $lastSyncTime",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 8.dp),
+                                )
                             }
-                            if (savedResults.isNotEmpty()) {
-                                SyncResultsList(savedResults)
-                            }
+                            DataOverviewTable(hcRecordCounts, serverCounts)
                         }
                     }
                 }
@@ -272,39 +280,58 @@ fun HomeScreen(
         }
     }
 
-    if (showSyncWarning) {
-        SyncWarningDialog(
-            onConfirm = { showSyncWarning = false; viewModel.syncNow() },
-            onDismiss = { showSyncWarning = false },
-        )
-    }
 }
 
 @Composable
-private fun SyncResultsList(results: List<TypeSyncResult>) {
-    results.sortedByDescending { it.recordCount }.forEach { result ->
+private fun DataOverviewTable(
+    hcCounts: List<TypeSyncResult>,
+    serverCounts: Map<String, Int>,
+) {
+    val hcMap = hcCounts.associateBy { it.typeName }
+    val allTypes = (hcMap.keys + serverCounts.keys).distinct()
+        .sortedByDescending { maxOf(hcMap[it]?.recordCount ?: 0, serverCounts[it] ?: 0) }
+
+    if (allTypes.isEmpty()) return
+
+    // Header
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text("Type", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            Text("Device", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Server", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+
+    allTypes.forEach { typeName ->
+        val hcCount = hcMap[typeName]?.recordCount
+        val srvCount = serverCounts[typeName]
+        val matched = hcCount != null && srvCount != null && srvCount >= hcCount
+
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 3.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(result.typeName, style = MaterialTheme.typography.bodySmall)
-            Text(
-                "${result.recordCount}",
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            Text(typeName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                Text(
+                    "${hcCount ?: "-"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.widthIn(min = 40.dp),
+                )
+                Text(
+                    "${srvCount ?: "-"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
+                    color = if (matched) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.widthIn(min = 40.dp),
+                )
+            }
         }
     }
 }
 
-private fun parseSyncResults(json: String): List<TypeSyncResult> {
-    if (json.isBlank()) return emptyList()
-    return try {
-        Gson().fromJson(json, object : TypeToken<List<TypeSyncResult>>() {}.type)
-    } catch (_: Exception) {
-        emptyList()
-    }
-}

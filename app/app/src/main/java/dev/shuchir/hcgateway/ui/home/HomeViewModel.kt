@@ -13,7 +13,9 @@ import dev.shuchir.hcgateway.data.remote.RefreshRequest
 import dev.shuchir.hcgateway.data.repository.HealthConnectRepository
 import dev.shuchir.hcgateway.data.repository.NetworkMonitor
 import dev.shuchir.hcgateway.data.repository.SyncRepository
+import dev.shuchir.hcgateway.domain.model.RECORD_TYPES
 import dev.shuchir.hcgateway.domain.model.SyncState
+import dev.shuchir.hcgateway.domain.model.TypeSyncResult
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -106,6 +108,43 @@ class HomeViewModel @Inject constructor(
     val hasPermissions: StateFlow<Boolean?> = _hasPermissions.asStateFlow()
 
     fun getRequiredPermissions(): Set<String> = healthConnectRepository.buildPermissions()
+
+    // Health Connect record counts (for comparison with synced data)
+    private val _hcRecordCounts = MutableStateFlow<List<TypeSyncResult>>(emptyList())
+    val hcRecordCounts: StateFlow<List<TypeSyncResult>> = _hcRecordCounts.asStateFlow()
+
+    fun loadHcRecordCounts() {
+        viewModelScope.launch {
+            val counts = RECORD_TYPES.mapNotNull { type ->
+                try {
+                    val records = healthConnectRepository.readRecords(
+                        type.recordClass,
+                        java.time.Instant.now().minusSeconds(30 * 24 * 60 * 60L),
+                        java.time.Instant.now(),
+                    )
+                    if (records.isNotEmpty()) TypeSyncResult(type.name, records.size) else null
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            _hcRecordCounts.value = counts
+        }
+    }
+
+    // Server record counts
+    private val _serverCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val serverCounts: StateFlow<Map<String, Int>> = _serverCounts.asStateFlow()
+
+    fun loadServerCounts() {
+        viewModelScope.launch {
+            try {
+                val response = apiService.getCounts()
+                if (response.isSuccessful && response.body() != null) {
+                    _serverCounts.value = response.body()!!
+                }
+            } catch (_: Exception) { }
+        }
+    }
 
     fun checkPermissions() {
         viewModelScope.launch {
