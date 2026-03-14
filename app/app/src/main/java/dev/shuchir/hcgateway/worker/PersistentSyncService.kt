@@ -106,7 +106,11 @@ class PersistentSyncService : Service() {
         val settings = preferencesRepository.settings.first()
         if (!settings.autoSyncEnabled) return "Auto sync off"
         val baseTime = if (settings.lastSync > 0) settings.lastSync else System.currentTimeMillis()
-        val nextMillis = baseTime + settings.syncInterval * 60_000L
+        var nextMillis = baseTime + settings.syncInterval * 60_000L
+        val now = System.currentTimeMillis()
+        while (nextMillis < now) {
+            nextMillis += settings.syncInterval * 60_000L
+        }
         val nextTime = Instant.ofEpochMilli(nextMillis)
             .atZone(ZoneId.systemDefault())
             .format(DateTimeFormatter.ofPattern("H:mm"))
