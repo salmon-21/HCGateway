@@ -21,8 +21,8 @@ class SettingsViewModel @Inject constructor(
     private val syncScheduler: SyncScheduler,
 ) : ViewModel() {
 
-    val settings: StateFlow<UserSettings> = preferencesRepository.settings
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserSettings())
+    val settings: StateFlow<UserSettings?> = preferencesRepository.settings
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     fun updateThemeMode(mode: String) {
         viewModelScope.launch { preferencesRepository.updateThemeMode(mode) }

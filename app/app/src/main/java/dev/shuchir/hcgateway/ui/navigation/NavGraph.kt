@@ -3,6 +3,8 @@ package dev.shuchir.hcgateway.ui.navigation
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.unit.IntOffset
@@ -23,6 +25,7 @@ import dev.shuchir.hcgateway.data.local.PreferencesRepository
 import dev.shuchir.hcgateway.ui.home.HomeScreen
 import dev.shuchir.hcgateway.ui.login.LoginScreen
 import dev.shuchir.hcgateway.ui.onboarding.PermissionOnboardingScreen
+import dev.shuchir.hcgateway.ui.settings.LicensesScreen
 import dev.shuchir.hcgateway.ui.settings.SettingsScreen
 import dev.shuchir.hcgateway.ui.theme.HCGatewayTheme
 import dev.shuchir.hcgateway.worker.PersistentSyncService
@@ -86,7 +89,9 @@ fun NavGraph(
             label = "auth",
         ) { state ->
             when (state) {
-                AuthState.Loading -> { /* Splash */ }
+                AuthState.Loading -> {
+                    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
+                }
                 AuthState.Onboarding -> PermissionOnboardingScreen(onNext = { /* state updates automatically */ })
                 AuthState.LoggedOut -> LoginScreen()
                 AuthState.LoggedIn -> AuthenticatedNavGraph()
@@ -101,6 +106,7 @@ private fun AuthenticatedNavGraph() {
     val navController = rememberNavController()
     val spatialSpec = MaterialTheme.motionScheme.slowSpatialSpec<IntOffset>()
     val effectsSpec = MaterialTheme.motionScheme.slowEffectsSpec<Float>()
+    val popSpatialSpec = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
 
     NavHost(
         navController = navController,
@@ -108,8 +114,8 @@ private fun AuthenticatedNavGraph() {
         modifier = Modifier.background(MaterialTheme.colorScheme.surface),
         enterTransition = { slideInHorizontally(spatialSpec) { it / 4 } + fadeIn(effectsSpec) },
         exitTransition = { slideOutHorizontally(spatialSpec) { -it / 4 } + fadeOut(effectsSpec) },
-        popEnterTransition = { slideInHorizontally(spatialSpec) { -it / 4 } + fadeIn(effectsSpec) },
-        popExitTransition = { slideOutHorizontally(spatialSpec) { it / 4 } + fadeOut(effectsSpec) },
+        popEnterTransition = { slideInHorizontally(popSpatialSpec) { -it / 4 } + fadeIn(effectsSpec) },
+        popExitTransition = { slideOutHorizontally(popSpatialSpec) { it / 4 } + fadeOut(effectsSpec) },
     ) {
         composable("home") {
             HomeScreen(
@@ -120,7 +126,11 @@ private fun AuthenticatedNavGraph() {
         composable("settings") {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
+                onNavigateToLicenses = { navController.navigate("licenses") },
             )
+        }
+        composable("licenses") {
+            LicensesScreen(onBack = { navController.popBackStack() })
         }
         composable("permissions") {
             PermissionOnboardingScreen(
