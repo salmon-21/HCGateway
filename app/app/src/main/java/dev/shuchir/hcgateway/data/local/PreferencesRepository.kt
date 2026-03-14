@@ -28,6 +28,7 @@ class PreferencesRepository @Inject constructor(
             useHttps = prefs[UserPreferences.USE_HTTPS] ?: true,
             lastSyncResults = prefs[UserPreferences.LAST_SYNC_RESULTS] ?: "",
             startOnBoot = prefs[UserPreferences.START_ON_BOOT] ?: true,
+            autoSyncEnabled = prefs[UserPreferences.AUTO_SYNC_ENABLED] ?: true,
         )
     }
 
@@ -92,6 +93,10 @@ class PreferencesRepository @Inject constructor(
 
     suspend fun updateStartOnBoot(enabled: Boolean) {
         dataStore.edit { it[UserPreferences.START_ON_BOOT] = enabled }
+    }
+
+    suspend fun updateAutoSyncEnabled(enabled: Boolean) {
+        dataStore.edit { it[UserPreferences.AUTO_SYNC_ENABLED] = enabled }
     }
 
     suspend fun clearSession() {

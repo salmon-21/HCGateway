@@ -3,7 +3,9 @@ package dev.shuchir.hcgateway.ui.navigation
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -93,27 +95,21 @@ fun NavGraph(
     }
 }
 
-private val enterTransition: EnterTransition =
-    slideInHorizontally(tween(300)) { it / 4 } + fadeIn(tween(300))
-private val exitTransition: ExitTransition =
-    slideOutHorizontally(tween(300)) { -it / 4 } + fadeOut(tween(300))
-private val popEnterTransition: EnterTransition =
-    slideInHorizontally(tween(300)) { -it / 4 } + fadeIn(tween(300))
-private val popExitTransition: ExitTransition =
-    slideOutHorizontally(tween(300)) { it / 4 } + fadeOut(tween(300))
-
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun AuthenticatedNavGraph() {
     val navController = rememberNavController()
+    val spatialSpec = MaterialTheme.motionScheme.slowSpatialSpec<IntOffset>()
+    val effectsSpec = MaterialTheme.motionScheme.slowEffectsSpec<Float>()
 
     NavHost(
         navController = navController,
         startDestination = "home",
         modifier = Modifier.background(MaterialTheme.colorScheme.surface),
-        enterTransition = { enterTransition },
-        exitTransition = { exitTransition },
-        popEnterTransition = { popEnterTransition },
-        popExitTransition = { popExitTransition },
+        enterTransition = { slideInHorizontally(spatialSpec) { it / 4 } + fadeIn(effectsSpec) },
+        exitTransition = { slideOutHorizontally(spatialSpec) { -it / 4 } + fadeOut(effectsSpec) },
+        popEnterTransition = { slideInHorizontally(spatialSpec) { -it / 4 } + fadeIn(effectsSpec) },
+        popExitTransition = { slideOutHorizontally(spatialSpec) { it / 4 } + fadeOut(effectsSpec) },
     ) {
         composable("home") {
             HomeScreen(

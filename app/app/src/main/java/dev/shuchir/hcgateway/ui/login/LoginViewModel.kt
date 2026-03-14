@@ -103,9 +103,11 @@ class LoginViewModel @Inject constructor(
             )
 
             _uiState.value = if (result.isSuccess) {
-                // Schedule background sync on login
-                val syncInterval = preferencesRepository.settings.first().syncInterval
-                syncScheduler.schedule(syncInterval)
+                // Schedule background sync on login if enabled
+                val s = preferencesRepository.settings.first()
+                if (s.autoSyncEnabled) {
+                    syncScheduler.schedule(s.syncInterval)
+                }
                 _uiState.value.copy(isLoading = false, password = "")
             } else {
                 _uiState.value.copy(
