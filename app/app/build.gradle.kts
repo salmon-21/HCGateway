@@ -110,6 +110,9 @@ dependencies {
 
     // AboutLibraries
     implementation(libs.aboutlibraries.core)
+
+    // Material Motion
+    implementation(libs.material.motion)
 }
 
 tasks.whenTaskAdded {
