@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
-import { Text, TextInput, Button, Card, Divider, SegmentedButtons, useTheme } from 'react-native-paper';
+import { Text, TextInput, Button, Divider, SegmentedButtons, useTheme } from 'react-native-paper';
 import M3Switch from '../components/M3Switch';
+import Surface from '../components/Surface';
+import { materialIcon } from '../components/MaterialIcon';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { useAppState } from '../hooks/useAppState';
@@ -47,58 +49,53 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text variant="headlineMedium" style={styles.title}>HCGateway</Text>
 
-        {/* Status Card */}
-        <Card style={styles.card} mode="elevated">
-          <Card.Content>
-            <View style={styles.statusRow}>
-              <View style={styles.statusDot} />
-              <Text variant="titleMedium">Connected</Text>
+        {/* Status */}
+        <Surface style={styles.card}>
+          <View style={styles.statusRow}>
+            <View style={styles.statusDot} />
+            <Text variant="titleMedium">Connected</Text>
+          </View>
+          <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}>
+            Last Sync: {formatLastSync(lastSync)}
+          </Text>
+        </Surface>
+
+        {/* Sync */}
+        <Surface style={styles.card}>
+          <Text variant="titleMedium" style={styles.sectionTitle}>Sync</Text>
+
+          <View style={styles.dateRangeRow}>
+            <View style={styles.flex}>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Range</Text>
+              <Text variant="bodyMedium">
+                {formatDateToReadable(customStartDate)} - {formatDateToReadable(customEndDate)}
+              </Text>
             </View>
-            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}>
-              Last Sync: {formatLastSync(lastSync)}
-            </Text>
-          </Card.Content>
-        </Card>
-
-        {/* Sync Card */}
-        <Card style={styles.card} mode="elevated">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.sectionTitle}>Sync</Text>
-
-            <View style={styles.dateRangeRow}>
-              <View style={styles.flex}>
-                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Range</Text>
-                <Text variant="bodyMedium">
-                  {formatDateToReadable(customStartDate)} - {formatDateToReadable(customEndDate)}
-                </Text>
-              </View>
-              <Button mode="outlined" onPress={() => setShowDatePickerModal(true)} compact>
-                Select Dates
-              </Button>
-            </View>
-
-            <Button
-              mode="contained"
-              onPress={() => {
-                if (!useCustomDates) {
-                  doSync();
-                } else if (customStartDate && customEndDate) {
-                  doSync(formatDateToISOString(customStartDate), formatDateToISOString(customEndDate));
-                }
-              }}
-              style={styles.syncButton}
-              contentStyle={styles.buttonContent}
-              icon="sync"
-            >
-              {useCustomDates ? 'Sync Selected Range' : 'Sync Now'}
+            <Button mode="outlined" onPress={() => setShowDatePickerModal(true)} compact>
+              Select Dates
             </Button>
-          </Card.Content>
-        </Card>
+          </View>
 
-        {/* Settings Card */}
-        <Card style={styles.card} mode="elevated">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.sectionTitle}>Settings</Text>
+          <Button
+            mode="contained"
+            onPress={() => {
+              if (!useCustomDates) {
+                doSync();
+              } else if (customStartDate && customEndDate) {
+                doSync(formatDateToISOString(customStartDate), formatDateToISOString(customEndDate));
+              }
+            }}
+            style={styles.syncButton}
+            contentStyle={styles.buttonContent}
+            icon={materialIcon('sync')}
+          >
+            {useCustomDates ? 'Sync Selected Range' : 'Sync Now'}
+          </Button>
+        </Surface>
+
+        {/* Settings */}
+        <Surface style={styles.card}>
+          <Text variant="titleMedium" style={styles.sectionTitle}>Settings</Text>
 
             <TextInput
               label="API Base URL"
@@ -106,7 +103,7 @@ export default function HomeScreen() {
               defaultValue={apiBase}
               onChangeText={updateApiBase}
               style={[styles.input, { backgroundColor: 'transparent' }]}
-              theme={{ colors: { background: theme.colors.elevation.level1 } }}
+              theme={{ colors: { background: theme.dark ? theme.colors.surfaceContainerHigh : theme.colors.surfaceContainerLow } }}
             />
 
             <TextInput
@@ -119,7 +116,7 @@ export default function HomeScreen() {
                 if (hours > 0) updateTaskDelay(hours);
               }}
               style={[styles.input, { backgroundColor: 'transparent' }]}
-              theme={{ colors: { background: theme.colors.elevation.level1 } }}
+              theme={{ colors: { background: theme.dark ? theme.colors.surfaceContainerHigh : theme.colors.surfaceContainerLow } }}
             />
 
             <Divider style={styles.divider} />
@@ -171,14 +168,13 @@ export default function HomeScreen() {
               value={themeMode}
               onValueChange={updateThemeMode}
               buttons={[
-                { value: 'light', label: 'Light', icon: 'white-balance-sunny' },
-                { value: 'system', label: 'System', icon: 'cellphone' },
-                { value: 'dark', label: 'Dark', icon: 'moon-waning-crescent' },
+                { value: 'light', label: 'Light', icon: materialIcon('light-mode') },
+                { value: 'system', label: 'System', icon: materialIcon('contrast') },
+                { value: 'dark', label: 'Dark', icon: materialIcon('dark-mode') },
               ]}
               style={styles.segmentedButtons}
             />
-          </Card.Content>
-        </Card>
+        </Surface>
 
         {/* Logout */}
         <Button
@@ -186,7 +182,7 @@ export default function HomeScreen() {
           onPress={doLogout}
           style={styles.logoutButton}
           textColor={theme.colors.error}
-          icon="logout"
+          icon={materialIcon('logout')}
         >
           Logout
         </Button>
@@ -230,7 +226,6 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 16,
     marginBottom: 12,
-    elevation: 1,
   },
   sectionTitle: {
     fontWeight: '600',

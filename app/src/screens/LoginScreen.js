@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
-import { Text, TextInput, Button, Card, SegmentedButtons, useTheme } from 'react-native-paper';
+import { Text, TextInput, Button, SegmentedButtons, useTheme } from 'react-native-paper';
 import M3Switch from '../components/M3Switch';
+import Surface from '../components/Surface';
+import { materialIcon } from '../components/MaterialIcon';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppState } from '../hooks/useAppState';
 
@@ -24,8 +26,7 @@ export default function LoginScreen() {
             </Text>
           </View>
 
-          <Card style={styles.card} mode="elevated">
-            <Card.Content style={styles.cardContent}>
+          <Surface style={styles.card}>
               <Text variant="titleMedium" style={styles.sectionTitle}>Login</Text>
               <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 16 }}>
                 If you don't have an account, one will be created automatically.
@@ -36,7 +37,7 @@ export default function LoginScreen() {
                 mode="outlined"
                 onChangeText={(text) => setForm((prev) => ({ ...prev, username: text }))}
                 style={[styles.input, { backgroundColor: 'transparent' }]}
-                theme={{ colors: { background: theme.colors.elevation.level1 } }}
+                theme={{ colors: { background: theme.dark ? theme.colors.surfaceContainerHigh : theme.colors.surfaceContainerLow } }}
               />
               <TextInput
                 label="Password"
@@ -44,7 +45,7 @@ export default function LoginScreen() {
                 secureTextEntry
                 onChangeText={(text) => setForm((prev) => ({ ...prev, password: text }))}
                 style={[styles.input, { backgroundColor: 'transparent' }]}
-                theme={{ colors: { background: theme.colors.elevation.level1 } }}
+                theme={{ colors: { background: theme.dark ? theme.colors.surfaceContainerHigh : theme.colors.surfaceContainerLow } }}
               />
               <TextInput
                 label="API Base URL"
@@ -52,7 +53,7 @@ export default function LoginScreen() {
                 defaultValue={apiBase}
                 onChangeText={updateApiBase}
                 style={[styles.input, { backgroundColor: 'transparent' }]}
-                theme={{ colors: { background: theme.colors.elevation.level1 } }}
+                theme={{ colors: { background: theme.dark ? theme.colors.surfaceContainerHigh : theme.colors.surfaceContainerLow } }}
               />
 
               <View style={styles.switchRow}>
@@ -65,9 +66,9 @@ export default function LoginScreen() {
                 value={themeMode}
                 onValueChange={updateThemeMode}
                 buttons={[
-                  { value: 'light', label: 'Light', icon: 'white-balance-sunny' },
-                  { value: 'system', label: 'System', icon: 'cellphone' },
-                  { value: 'dark', label: 'Dark', icon: 'moon-waning-crescent' },
+                  { value: 'light', label: 'Light', icon: materialIcon('weather-sunny') },
+                  { value: 'system', label: 'System', icon: materialIcon('contrast') },
+                  { value: 'dark', label: 'Dark', icon: materialIcon('dark-mode') },
                 ]}
                 style={{ marginBottom: 12 }}
               />
@@ -80,8 +81,7 @@ export default function LoginScreen() {
               >
                 Login
               </Button>
-            </Card.Content>
-          </Card>
+          </Surface>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
