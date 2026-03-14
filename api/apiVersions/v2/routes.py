@@ -34,7 +34,7 @@ def before_request():
     if not user:
         return jsonify({'error': 'invalid token'}), 403
     
-    if datetime.datetime.now(datetime.timezone.utc) > user['expiry']:
+    if datetime.datetime.now(datetime.timezone.utc) > user['expiry'].replace(tzinfo=datetime.timezone.utc):
         return jsonify({'error': 'token expired. Use /api/v2/login to reauthenticate.'}), 403
     
     g.user = user['_id']
@@ -82,7 +82,7 @@ def login():
         
     sessid = user['_id']
 
-    if not "expiry" in user or datetime.datetime.now(datetime.timezone.utc) > user['expiry']:
+    if not "expiry" in user or datetime.datetime.now(datetime.timezone.utc) > user['expiry'].replace(tzinfo=datetime.timezone.utc):
         token = secrets.token_urlsafe(32)
         refresh = secrets.token_urlsafe(32)
         expiryDate = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=12)
