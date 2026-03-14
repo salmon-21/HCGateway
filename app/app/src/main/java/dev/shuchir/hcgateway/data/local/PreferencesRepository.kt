@@ -26,6 +26,7 @@ class PreferencesRepository @Inject constructor(
             sentryEnabled = prefs[UserPreferences.SENTRY_ENABLED] ?: true,
             fcmToken = prefs[UserPreferences.FCM_TOKEN] ?: "",
             useHttps = prefs[UserPreferences.USE_HTTPS] ?: true,
+            lastSyncResults = prefs[UserPreferences.LAST_SYNC_RESULTS] ?: "",
         )
     }
 
@@ -35,6 +36,14 @@ class PreferencesRepository @Inject constructor(
 
     val themeMode: Flow<String> = dataStore.data.map { prefs ->
         prefs[UserPreferences.THEME_MODE] ?: "system"
+    }
+
+    val onboardingComplete: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[UserPreferences.ONBOARDING_COMPLETE] ?: false
+    }
+
+    suspend fun setOnboardingComplete() {
+        dataStore.edit { it[UserPreferences.ONBOARDING_COMPLETE] = true }
     }
 
     suspend fun saveTokens(token: String, refreshToken: String) {
@@ -74,6 +83,10 @@ class PreferencesRepository @Inject constructor(
 
     suspend fun updateFcmToken(token: String) {
         dataStore.edit { it[UserPreferences.FCM_TOKEN] = token }
+    }
+
+    suspend fun updateLastSyncResults(json: String) {
+        dataStore.edit { it[UserPreferences.LAST_SYNC_RESULTS] = json }
     }
 
     suspend fun clearSession() {
