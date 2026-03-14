@@ -3,6 +3,7 @@ package dev.shuchir.hcgateway.ui.home
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -101,8 +102,10 @@ fun HomeScreen(
             }
 
             ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { if (serverReachable == false) viewModel.checkServerConnection() },
+                modifier = Modifier.fillMaxWidth().then(
+                    if (serverReachable == false) Modifier.clickable { viewModel.checkServerConnection() }
+                    else Modifier
+                ),
                 colors = CardDefaults.elevatedCardColors(containerColor = statusColor),
                 elevation = CardDefaults.elevatedCardElevation(defaultElevation = 0.dp),
             ) {
