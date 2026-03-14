@@ -145,17 +145,25 @@ def revoke():
             "success": True
     }), 200
 
+@v2.get("/counts")
+def counts():
+    userid = g.user
+    db = mongo['hcgateway_'+userid]
+    result = {}
+    for col_name in db.list_collection_names():
+        display_name = col_name[0].upper() + col_name[1:]
+        result[display_name] = db[col_name].count_documents({})
+    return jsonify(result), 200
+
 @v2.post("/sync/<method>")
 def sync(method):
-    print(request.json)
     method = method[0].lower() + method[1:]
     if not method:
         return jsonify({'error': 'no method provided'}), 400
     if not "data" in request.json:
         return jsonify({'error': 'no data provided'}), 400
-    
+
     userid = g.user
-    print(userid)
 
     db = mongo['hcgateway']
     usrStore = db['users']
@@ -163,7 +171,6 @@ def sync(method):
     try: user = usrStore.find_one({'_id': userid})
     except InvalidId: return jsonify({'error': 'invalid user id'}), 400
 
-    print(user)
     hashed_password = user['password']
     key = base64.urlsafe_b64encode(hashed_password.encode("utf-8").ljust(32)[:32])
     fernet = Fernet(key)
@@ -171,13 +178,13 @@ def sync(method):
     data = request.json['data']
     if type(data) != list:
         data = [data]
-    print(method, len(data))
+    print(f"{method}: {len(data)} records")
 
     db = mongo['hcgateway_'+userid]
     collection = db[method]
-    
+
+    operations = []
     for item in data:
-        # print(item)
         itemid = item['metadata']['id']
         dataObj = {}
         for k, v in item.items():
@@ -194,17 +201,15 @@ def sync(method):
         toencrypt = json.dumps(dataObj).encode()
         encrypted = fernet.encrypt(toencrypt).decode()
 
-        # fernet.decrypt(encrypted.encode()).decode()
+        operations.append(pymongo.UpdateOne(
+            {"_id": itemid},
+            {"$set": {"id": itemid, "data": encrypted, "app": item['metadata']['dataOrigin'], "start": starttime, "end": endtime}},
+            upsert=True
+        ))
 
-        # print(starttime, endtime)
-        try:
-            print("creating")
-            collection.insert_one({"_id": itemid, "id": itemid, 'data': encrypted, "app": item['metadata']['dataOrigin'], "start": starttime, "end": endtime})
-        except:
-            print("updating")
-            collection.update_one({"_id": itemid}, {"$set": 
-                                                 {'data': encrypted, "app": item['metadata']['dataOrigin'], "start": starttime, "end": endtime}
-                                                })
+    if operations:
+        result = collection.bulk_write(operations, ordered=False)
+        print(f"  inserted={result.upserted_count} modified={result.modified_count}")
 
     return jsonify({'success': True}), 200
 
