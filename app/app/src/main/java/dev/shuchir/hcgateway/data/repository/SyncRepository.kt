@@ -162,21 +162,31 @@ class SyncRepository @Inject constructor(
             return fullSync(startTime, Instant.now(), typeResults)
         }
 
-        var typesProcessed = 0
-        for ((typeName, records) in result.upsertedRecords) {
-            typesProcessed++
-            _syncState.value = SyncState.Syncing(typeName, typesProcessed, result.upsertedRecords.size)
+        val completed = AtomicInteger(0)
+        val totalRecordsAtomic = AtomicInteger(0)
+        val totalTypes = result.upsertedRecords.size
 
-            if (records.isNotEmpty()) {
-                try {
-                    val json = healthConnectRepository.recordsToJson(records)
-                    apiService.syncRecords(typeName, SyncRequest(json))
-                    totalRecords += records.size
-                    currentRecordCount = totalRecords
-                    typeResults.add(TypeSyncResult(typeName, records.size))
-                } catch (_: Exception) { }
-            }
+        coroutineScope {
+            result.upsertedRecords.map { (typeName, records) ->
+                async {
+                    if (records.isNotEmpty()) {
+                        try {
+                            val json = healthConnectRepository.recordsToJson(records)
+                            apiService.syncRecords(typeName, SyncRequest(json))
+                            totalRecordsAtomic.addAndGet(records.size)
+                            currentRecordCount = totalRecordsAtomic.get()
+                            synchronized(typeResults) {
+                                typeResults.add(TypeSyncResult(typeName, records.size))
+                            }
+                        } catch (_: Exception) { }
+                    }
+                    val done = completed.incrementAndGet()
+                    _syncState.value = SyncState.Syncing(typeName, done, totalTypes)
+                }
+            }.awaitAll()
         }
+
+        totalRecords = totalRecordsAtomic.get()
 
         if (result.nextToken.isNotBlank()) {
             preferencesRepository.updateChangesToken(result.nextToken)
