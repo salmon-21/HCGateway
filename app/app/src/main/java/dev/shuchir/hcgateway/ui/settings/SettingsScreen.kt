@@ -2,6 +2,12 @@ package dev.shuchir.hcgateway.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -9,6 +15,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.ui.res.painterResource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material3.*
@@ -22,7 +30,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
@@ -103,12 +111,42 @@ fun SettingsScreen(
                 )
             }
 
-            // Sync interval
+            // Auto sync toggle
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Auto sync", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+                    Text(
+                        "Periodically sync in the background",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = settings.autoSyncEnabled,
+                    onCheckedChange = viewModel::updateAutoSyncEnabled,
+                )
+            }
+
+            // Sync interval (shown only when auto sync is enabled)
+            val autoSyncSpatial = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
+            val autoSyncEffects = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+            AnimatedVisibility(
+                visible = settings.autoSyncEnabled,
+                enter = expandVertically(autoSyncSpatial) + fadeIn(autoSyncEffects),
+                exit = shrinkVertically(autoSyncSpatial) + fadeOut(autoSyncEffects),
+            ) {
             SettingsItem(title = "Auto-sync interval") {
                 SyncIntervalPicker(
                     currentMinutes = settings.syncInterval,
                     onIntervalChange = viewModel::updateSyncInterval,
                 )
+            }
             }
 
 
@@ -117,7 +155,7 @@ fun SettingsScreen(
 
             SettingsItem(title = "Theme") {
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    listOf("light" to "Light", "dark" to "Dark", "system" to "System").forEachIndexed { index, (value, label) ->
+                    listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEachIndexed { index, (value, label) ->
                         SegmentedButton(
                             selected = settings.themeMode == value,
                             onClick = { viewModel.updateThemeMode(value) },
@@ -135,13 +173,19 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/shuchir/HCGateway"))
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/ShuchirJ/HCGateway"))
                         context.startActivity(intent)
                     }
                     .padding(horizontal = 16.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Icon(
+                    painter = painterResource(dev.shuchir.hcgateway.R.drawable.ic_github),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(Modifier.width(12.dp))
                 Text("Source code", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
             }
 
@@ -149,13 +193,15 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/shuchir/HCGateway/issues"))
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/ShuchirJ/HCGateway/issues"))
                         context.startActivity(intent)
                     }
                     .padding(horizontal = 16.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Icon(Icons.Default.BugReport, contentDescription = null)
+                Spacer(Modifier.width(12.dp))
                 Text("Report a bug", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
             }
 
@@ -168,15 +214,16 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .clickable { showLogoutConfirm = true }
                     .padding(horizontal = 16.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Logout", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.error)
                 Icon(
                     Icons.AutoMirrored.Filled.Logout,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.error,
                 )
+                Spacer(Modifier.width(12.dp))
+                Text("Logout", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.error)
             }
         }
     }
@@ -190,7 +237,7 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     showLogoutConfirm = false
                     viewModel.logout()
-                }) { Text("Logout") }
+                }) { Text("Logout", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(onClick = { showLogoutConfirm = false }) { Text("Cancel") }
@@ -229,7 +276,7 @@ private fun SettingsItem(
 
 private val INTERVAL_PRESETS = listOf(15, 30, 60, 120, 360, 1440)
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun SyncIntervalPicker(
     currentMinutes: Int,
@@ -262,43 +309,47 @@ private fun SyncIntervalPicker(
         )
     }
 
-    if (showCustomInput || isCustom) {
-        Spacer(Modifier.height(8.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+    val spatialSpec = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
+    val effectsSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    AnimatedVisibility(
+        visible = showCustomInput || isCustom,
+        enter = expandVertically(spatialSpec) + fadeIn(effectsSpec),
+        exit = shrinkVertically(spatialSpec) + fadeOut(effectsSpec),
+    ) {
+        Column {
+            Spacer(Modifier.height(8.dp))
+            val parsed = parseIntervalInput(customText)
+            val isError = customText.isNotBlank() && parsed == null
             OutlinedTextField(
                 value = customText,
-                onValueChange = { customText = it },
+                onValueChange = { newValue ->
+                    customText = newValue
+                    parseIntervalInput(newValue)?.let { onIntervalChange(it) }
+                },
                 label = { Text("Interval") },
                 placeholder = { Text("e.g. 2h, 30m, 1d") },
                 singleLine = true,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
+                isError = isError,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Text,
                     imeAction = ImeAction.Done,
                 ),
                 keyboardActions = KeyboardActions(
                     onDone = {
-                        parseIntervalInput(customText)?.let {
-                            onIntervalChange(it)
-                            showCustomInput = false
-                        }
+                        if (parsed != null) showCustomInput = false
                     }
                 ),
-                supportingText = { Text("Use m (minutes), h (hours), d (days)") },
-            )
-            FilledTonalButton(
-                onClick = {
-                    parseIntervalInput(customText)?.let {
-                        onIntervalChange(it)
-                        showCustomInput = false
-                    }
+                supportingText = {
+                    Text(
+                        when {
+                            isError -> "Invalid format. Use e.g. 30m, 2h, 1d (min 15m, max 7d)"
+                            parsed != null -> "Set to ${formatInterval(parsed)}"
+                            else -> "Use m (minutes), h (hours), d (days)"
+                        }
+                    )
                 },
-            ) {
-                Text("Set")
-            }
+            )
         }
     }
 }
@@ -320,13 +371,19 @@ private fun parseIntervalInput(input: String): Int? {
     val trimmed = input.trim().lowercase()
     if (trimmed.isEmpty()) return null
 
-    val number = trimmed.dropLast(1).toDoubleOrNull()
     val unit = trimmed.lastOrNull()
+    if (unit !in listOf('m', 'h', 'd')) return null
 
-    return when (unit) {
-        'm' -> number?.toInt()?.coerceIn(15, 10080)
-        'h' -> number?.let { (it * 60).toInt().coerceIn(15, 10080) }
-        'd' -> number?.let { (it * 1440).toInt().coerceIn(15, 10080) }
-        else -> trimmed.toIntOrNull()?.coerceIn(15, 10080)
+    val number = trimmed.dropLast(1).toDoubleOrNull() ?: return null
+    if (number <= 0) return null
+
+    val minutes = when (unit) {
+        'm' -> number.toInt()
+        'h' -> (number * 60).toInt()
+        'd' -> (number * 1440).toInt()
+        else -> return null
     }
+
+    if (minutes < 15 || minutes > 10080) return null
+    return minutes
 }

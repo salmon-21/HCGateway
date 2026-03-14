@@ -25,7 +25,9 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 val settings = preferencesRepository.settings.first()
                 if (settings.token.isNotBlank() && settings.startOnBoot) {
-                    syncScheduler.schedule(settings.syncInterval)
+                    if (settings.autoSyncEnabled) {
+                        syncScheduler.schedule(settings.syncInterval)
+                    }
                     PersistentSyncService.start(context)
                 }
             } finally {

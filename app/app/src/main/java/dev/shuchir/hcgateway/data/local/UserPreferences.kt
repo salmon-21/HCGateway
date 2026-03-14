@@ -21,6 +21,7 @@ object UserPreferences {
     val LAST_SYNC_RESULTS = stringPreferencesKey("last_sync_results") // JSON: [{"typeName":"Steps","recordCount":38},...]
     val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
     val START_ON_BOOT = booleanPreferencesKey("start_on_boot")
+    val AUTO_SYNC_ENABLED = booleanPreferencesKey("auto_sync_enabled")
 }
 
 data class UserSettings(
@@ -38,4 +39,5 @@ data class UserSettings(
     val useHttps: Boolean = true,
     val lastSyncResults: String = "", // JSON
     val startOnBoot: Boolean = true,
+    val autoSyncEnabled: Boolean = true,
 )
