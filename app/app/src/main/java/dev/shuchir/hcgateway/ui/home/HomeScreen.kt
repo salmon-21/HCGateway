@@ -329,7 +329,7 @@ fun HomeScreen(
                             modifier = Modifier.padding(bottom = 8.dp),
                         )
                     }
-                    DataOverviewTable(pendingCounts, serverCounts)
+                    DataOverviewTable(pendingCounts, serverCounts, hasEverSynced = settings.lastSync > 0)
                 }
             }
 
@@ -384,6 +384,7 @@ fun HomeScreen(
 private fun DataOverviewTable(
     pendingCounts: Map<String, Int>,
     serverCounts: Map<String, Int>?,
+    hasEverSynced: Boolean = false,
 ) {
     if (serverCounts == null) {
         Row(
@@ -422,6 +423,7 @@ private fun DataOverviewTable(
     allTypes.forEach { typeName ->
         val pending = pendingCounts[typeName] ?: 0
         val srvCount = serverCounts[typeName]
+        val pendingText = if (!hasEverSynced) "-" else "$pending"
 
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
@@ -430,10 +432,10 @@ private fun DataOverviewTable(
             Text(typeName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 Text(
-                    "$pending",
+                    pendingText,
                     style = MaterialTheme.typography.bodySmall,
-                    fontWeight = if (pending > 0) FontWeight.Medium else FontWeight.Normal,
-                    color = if (pending > 0) MaterialTheme.colorScheme.error
+                    fontWeight = if (hasEverSynced && pending > 0) FontWeight.Medium else FontWeight.Normal,
+                    color = if (hasEverSynced && pending > 0) MaterialTheme.colorScheme.error
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.widthIn(min = 32.dp),
                 )
