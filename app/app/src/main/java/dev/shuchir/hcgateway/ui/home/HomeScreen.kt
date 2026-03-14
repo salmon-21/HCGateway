@@ -50,6 +50,7 @@ fun HomeScreen(
     var showDatePicker by remember { mutableStateOf(false) }
     var pendingSync by remember { mutableStateOf<(() -> Unit)?>(null) }
     var syncSource by remember { mutableIntStateOf(0) }
+    var lastFailedTypes by remember { mutableStateOf<List<String>>(emptyList()) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract(),
@@ -190,13 +191,28 @@ fun HomeScreen(
                 var progressDismissing by remember { mutableStateOf(false) }
                 LaunchedEffect(syncState) {
                     when (syncState) {
-                        is SyncState.Done, is SyncState.Cancelled -> {
+                        is SyncState.Done -> {
+                            val done = syncState as SyncState.Done
+                            if (done.failedTypes.isNotEmpty()) {
+                                lastFailedTypes = done.failedTypes
+                            } else {
+                                lastFailedTypes = emptyList()
+                            }
                             // Phase 1: wait for wavy→straight morph
                             kotlinx.coroutines.delay(600)
                             // Phase 2: start shrinking progress bar
                             progressDismissing = true
                             kotlinx.coroutines.delay(400)
                             // Phase 3: reset
+                            progressDismissing = false
+                            viewModel.loadServerCounts()
+                            viewModel.loadPendingCounts()
+                            viewModel.resetSyncState()
+                        }
+                        is SyncState.Cancelled -> {
+                            kotlinx.coroutines.delay(600)
+                            progressDismissing = true
+                            kotlinx.coroutines.delay(400)
                             progressDismissing = false
                             viewModel.loadServerCounts()
                             viewModel.loadPendingCounts()
@@ -347,6 +363,16 @@ fun HomeScreen(
                             }
                         }
                     }
+                }
+
+                // Failed types warning
+                if (lastFailedTypes.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Failed to sync: ${lastFailedTypes.joinToString(", ")}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
 
                 // Data overview (always shown when available)
