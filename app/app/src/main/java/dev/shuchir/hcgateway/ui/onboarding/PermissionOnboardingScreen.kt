@@ -1,6 +1,7 @@
 package dev.shuchir.hcgateway.ui.onboarding
 
 import android.Manifest
+import androidx.compose.ui.graphics.luminance
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -135,7 +136,10 @@ fun PermissionOnboardingScreen(
             PermissionRow(
                 icon = {
                     Image(
-                        painter = painterResource(R.drawable.ic_health_connect),
+                        painter = painterResource(
+                        if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) R.drawable.ic_health_connect_white
+                        else R.drawable.ic_health_connect
+                    ),
                         contentDescription = null,
                         modifier = Modifier.size(24.dp),
                     )
