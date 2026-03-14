@@ -76,6 +76,9 @@ class PersistentSyncService : Service() {
                         manager.notify(NOTIFICATION_ID, buildPersistentNotification("Waiting for next sync"))
                         showResultNotification("Sync failed", state.message)
                     }
+                    is SyncState.Cancelled -> {
+                        manager.notify(NOTIFICATION_ID, buildPersistentNotification("Sync cancelled"))
+                    }
                 }
             }
         }
