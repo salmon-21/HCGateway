@@ -44,6 +44,13 @@ class HomeViewModel @Inject constructor(
 
     val isHealthConnectAvailable: Boolean get() = healthConnectRepository.isAvailable
 
+    private lateinit var lifecycleObserver: LifecycleEventObserver
+
+    override fun onCleared() {
+        super.onCleared()
+        ProcessLifecycleOwner.get().lifecycle.removeObserver(lifecycleObserver)
+    }
+
     private val _tableHeightPx = MutableStateFlow(0)
     val tableHeightPx: StateFlow<Int> = _tableHeightPx.asStateFlow()
 
@@ -68,12 +75,12 @@ class HomeViewModel @Inject constructor(
             }
         }
         // Re-check when app returns to foreground
-        val observer = LifecycleEventObserver { _, event ->
+        lifecycleObserver = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 checkServerConnection()
             }
         }
-        ProcessLifecycleOwner.get().lifecycle.addObserver(observer)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
         // Re-check when network state changes
         viewModelScope.launch {
             networkMonitor.isConnected.collect { connected ->
@@ -119,7 +126,7 @@ class HomeViewModel @Inject constructor(
     private val _hasPermissions = MutableStateFlow<Boolean?>(null)
     val hasPermissions: StateFlow<Boolean?> = _hasPermissions.asStateFlow()
 
-    fun getRequiredPermissions(): Set<String> = healthConnectRepository.buildPermissions()
+    fun getRequiredPermissions(): Set<String> = healthConnectRepository.permissions
 
     // Pending (new) record counts since last sync via Changes API
     private val _pendingCounts = MutableStateFlow<Map<String, Int>>(emptyMap())

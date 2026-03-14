@@ -30,11 +30,7 @@ class HCGatewayApp : Application(), Configuration.Provider {
         CoroutineScope(Dispatchers.IO).launch {
             val mode = preferencesRepository.themeMode.first()
             androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
-                when (mode) {
-                    "light" -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
-                    "dark" -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
-                    else -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
-                }
+                dev.shuchir.hcgateway.ui.theme.themeModeToNightMode(mode)
             )
         }
     }

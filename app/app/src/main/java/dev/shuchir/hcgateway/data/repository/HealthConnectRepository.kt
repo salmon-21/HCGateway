@@ -24,8 +24,8 @@ class HealthConnectRepository @Inject constructor(
 ) {
     val isAvailable: Boolean get() = healthConnectClient != null
 
-    fun buildPermissions(): Set<String> {
-        return RECORD_TYPES.flatMap { type ->
+    val permissions: Set<String> by lazy {
+        RECORD_TYPES.flatMap { type ->
             listOf(
                 HealthPermission.getReadPermission(type.recordClass),
                 HealthPermission.getWritePermission(type.recordClass),
@@ -36,7 +36,7 @@ class HealthConnectRepository @Inject constructor(
     suspend fun hasAllPermissions(): Boolean {
         val client = healthConnectClient ?: return false
         val granted = client.permissionController.getGrantedPermissions()
-        return buildPermissions().all { it in granted }
+        return permissions.all { it in granted }
     }
 
     suspend fun readRecords(
@@ -76,7 +76,6 @@ class HealthConnectRepository @Inject constructor(
 
     data class ChangeResult(
         val upsertedRecords: Map<String, List<Record>>,
-        val deletedIds: Map<String, List<String>>,
         val nextToken: String,
         val hasMore: Boolean,
         val tokenExpired: Boolean,
@@ -85,7 +84,6 @@ class HealthConnectRepository @Inject constructor(
     suspend fun getChanges(token: String): ChangeResult {
         val client = healthConnectClient ?: throw IllegalStateException("Health Connect not available")
         val upserted = mutableMapOf<String, MutableList<Record>>()
-        val deleted = mutableMapOf<String, MutableList<String>>()
 
         var currentToken = token
         var hasMore = true
@@ -110,12 +108,12 @@ class HealthConnectRepository @Inject constructor(
             }
         } catch (e: Exception) {
             if (e.message?.contains("token", ignoreCase = true) == true) {
-                return ChangeResult(emptyMap(), emptyMap(), "", false, tokenExpired = true)
+                return ChangeResult(emptyMap(), "", false, tokenExpired = true)
             }
             throw e
         }
 
-        return ChangeResult(upserted, deleted, currentToken, false, tokenExpired = false)
+        return ChangeResult(upserted, currentToken, false, tokenExpired = false)
     }
 
     suspend fun insertRecords(records: List<Record>) {

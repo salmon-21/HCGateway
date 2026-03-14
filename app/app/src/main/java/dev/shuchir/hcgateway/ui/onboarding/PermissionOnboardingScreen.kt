@@ -56,7 +56,7 @@ class PermissionOnboardingViewModel @Inject constructor(
     private val _batteryOptimized = MutableStateFlow(true)
     val batteryOptimized: StateFlow<Boolean> = _batteryOptimized.asStateFlow()
 
-    fun getPermissions(): Set<String> = healthConnectRepository.buildPermissions()
+    fun getPermissions(): Set<String> = healthConnectRepository.permissions
 
     fun checkAll() {
         viewModelScope.launch {
@@ -87,7 +87,13 @@ fun PermissionOnboardingScreen(
         contract = PermissionController.createRequestPermissionResultContract(),
     ) { viewModel.checkAll() }
 
-    var notificationGranted by remember { mutableStateOf(true) }
+    var notificationGranted by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } else true
+        )
+    }
     val notificationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted -> notificationGranted = granted }
