@@ -35,21 +35,24 @@ export default function LoginScreen() {
                 label="Username"
                 mode="outlined"
                 onChangeText={(text) => setForm((prev) => ({ ...prev, username: text }))}
-                style={styles.input}
+                style={[styles.input, { backgroundColor: 'transparent' }]}
+                theme={{ colors: { background: theme.colors.surfaceVariant } }}
               />
               <TextInput
                 label="Password"
                 mode="outlined"
                 secureTextEntry
                 onChangeText={(text) => setForm((prev) => ({ ...prev, password: text }))}
-                style={styles.input}
+                style={[styles.input, { backgroundColor: 'transparent' }]}
+                theme={{ colors: { background: theme.colors.surfaceVariant } }}
               />
               <TextInput
                 label="API Base URL"
                 mode="outlined"
                 defaultValue={apiBase}
                 onChangeText={updateApiBase}
-                style={styles.input}
+                style={[styles.input, { backgroundColor: 'transparent' }]}
+                theme={{ colors: { background: theme.colors.surfaceVariant } }}
               />
 
               <View style={styles.switchRow}>
