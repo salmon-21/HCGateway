@@ -1,13 +1,14 @@
 package dev.shuchir.hcgateway.data.remote
 
 import dev.shuchir.hcgateway.data.local.PreferencesRepository
-import kotlinx.coroutines.flow.first
+import dev.shuchir.hcgateway.data.local.SettingsCache
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
 import javax.inject.Inject
 
 class AuthInterceptor @Inject constructor(
+    private val settingsCache: SettingsCache,
     private val preferencesRepository: PreferencesRepository,
     private val apiServiceProvider: dagger.Lazy<ApiService>,
 ) : Interceptor {
@@ -21,9 +22,7 @@ class AuthInterceptor @Inject constructor(
             return chain.proceed(request)
         }
 
-        val token = runBlocking {
-            preferencesRepository.settings.first().token
-        }
+        val token = settingsCache.token
 
         val authenticatedRequest = request.newBuilder()
             .header("Authorization", "Bearer $token")
@@ -35,10 +34,11 @@ class AuthInterceptor @Inject constructor(
         if (response.code == 403 && request.header("X-Retry") == null) {
             response.close()
 
+            val refreshToken = settingsCache.refreshToken
+            if (refreshToken.isBlank()) return response
+
             val newToken = runBlocking {
                 try {
-                    val refreshToken = preferencesRepository.settings.first().refreshToken
-                    if (refreshToken.isBlank()) return@runBlocking null
                     val result = apiServiceProvider.get().refresh(RefreshRequest(refreshToken))
                     if (result.isSuccessful && result.body() != null) {
                         val body = result.body()!!

@@ -1,7 +1,7 @@
 package dev.shuchir.hcgateway.data.remote
 
 import dev.shuchir.hcgateway.data.local.PreferencesRepository
-import kotlinx.coroutines.flow.first
+import dev.shuchir.hcgateway.data.local.SettingsCache
 import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
 import okhttp3.Request
@@ -10,6 +10,7 @@ import okhttp3.Route
 import javax.inject.Inject
 
 class AuthAuthenticator @Inject constructor(
+    private val settingsCache: SettingsCache,
     private val preferencesRepository: PreferencesRepository,
     private val apiServiceProvider: dagger.Lazy<ApiService>,
 ) : Authenticator {
@@ -18,10 +19,7 @@ class AuthAuthenticator @Inject constructor(
         // Only retry once
         if (response.request.header("X-Retry") != null) return null
 
-        val refreshToken = runBlocking {
-            preferencesRepository.settings.first().refreshToken
-        }
-
+        val refreshToken = settingsCache.refreshToken
         if (refreshToken.isBlank()) return null
 
         val refreshResponse = runBlocking {
