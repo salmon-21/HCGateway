@@ -407,7 +407,14 @@ fun HomeScreen(
 
     // Force Sync Date Range Picker
     if (showDatePicker) {
-        val datePickerState = rememberDateRangePickerState()
+        val datePickerState = rememberDateRangePickerState(
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                    val endOfToday = System.currentTimeMillis() + 24 * 60 * 60 * 1000L
+                    return utcTimeMillis <= endOfToday
+                }
+            }
+        )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {

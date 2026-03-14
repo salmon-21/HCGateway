@@ -60,5 +60,4 @@ app/app/src/main/java/dev/shuchir/hcgateway/
 
 ## Conventions
 
-- Communicate in Japanese
 - Keep responses concise
