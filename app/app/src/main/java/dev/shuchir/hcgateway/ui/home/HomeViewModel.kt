@@ -87,7 +87,7 @@ class HomeViewModel @Inject constructor(
                 _serverReachable.value = false
                 return@launch
             }
-            _serverReachable.value = try {
+            val reachable = try {
                 withTimeout(5000) {
                     val response = apiService.refresh(RefreshRequest(settings.refreshToken))
                     if (response.isSuccessful && response.body() != null) {
@@ -101,6 +101,11 @@ class HomeViewModel @Inject constructor(
             } catch (_: Exception) {
                 false
             }
+            _serverReachable.value = reachable
+            if (reachable) {
+                loadServerCounts()
+                loadPendingCounts()
+            }
         }
     }
 
@@ -109,40 +114,47 @@ class HomeViewModel @Inject constructor(
 
     fun getRequiredPermissions(): Set<String> = healthConnectRepository.buildPermissions()
 
-    // Health Connect record counts (for comparison with synced data)
-    private val _hcRecordCounts = MutableStateFlow<List<TypeSyncResult>>(emptyList())
-    val hcRecordCounts: StateFlow<List<TypeSyncResult>> = _hcRecordCounts.asStateFlow()
+    // Pending (new) record counts since last sync via Changes API
+    private val _pendingCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val pendingCounts: StateFlow<Map<String, Int>> = _pendingCounts.asStateFlow()
 
-    fun loadHcRecordCounts() {
+    fun loadPendingCounts() {
         viewModelScope.launch {
-            val counts = RECORD_TYPES.mapNotNull { type ->
-                try {
-                    val records = healthConnectRepository.readRecords(
-                        type.recordClass,
-                        java.time.Instant.EPOCH,
-                        java.time.Instant.now(),
-                    )
-                    if (records.isNotEmpty()) TypeSyncResult(type.name, records.size) else null
-                } catch (_: Exception) {
-                    null
-                }
+            val settings = preferencesRepository.settings.first()
+            if (settings.changesToken.isBlank()) {
+                // No token = never synced, can't determine pending
+                _pendingCounts.value = emptyMap()
+                return@launch
             }
-            _hcRecordCounts.value = counts
+            try {
+                val result = healthConnectRepository.getChanges(settings.changesToken)
+                if (result.tokenExpired) {
+                    _pendingCounts.value = emptyMap()
+                    return@launch
+                }
+                _pendingCounts.value = result.upsertedRecords.mapValues { it.value.size }
+            } catch (_: Exception) {
+                _pendingCounts.value = emptyMap()
+            }
         }
     }
 
-    // Server record counts
-    private val _serverCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
-    val serverCounts: StateFlow<Map<String, Int>> = _serverCounts.asStateFlow()
+    // Server record counts (null = not loaded yet)
+    private val _serverCounts = MutableStateFlow<Map<String, Int>?>(null)
+    val serverCounts: StateFlow<Map<String, Int>?> = _serverCounts.asStateFlow()
 
     fun loadServerCounts() {
         viewModelScope.launch {
             try {
                 val response = apiService.getCounts()
-                if (response.isSuccessful && response.body() != null) {
-                    _serverCounts.value = response.body()!!
+                _serverCounts.value = if (response.isSuccessful && response.body() != null) {
+                    response.body()!!
+                } else {
+                    _serverCounts.value ?: emptyMap()
                 }
-            } catch (_: Exception) { }
+            } catch (_: Exception) {
+                _serverCounts.value = _serverCounts.value ?: emptyMap()
+            }
         }
     }
 

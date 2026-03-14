@@ -9,6 +9,7 @@ import javax.inject.Inject
 
 class AuthInterceptor @Inject constructor(
     private val preferencesRepository: PreferencesRepository,
+    private val apiServiceProvider: dagger.Lazy<ApiService>,
 ) : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -28,6 +29,34 @@ class AuthInterceptor @Inject constructor(
             .header("Authorization", "Bearer $token")
             .build()
 
-        return chain.proceed(authenticatedRequest)
+        val response = chain.proceed(authenticatedRequest)
+
+        // Auto-refresh on 403
+        if (response.code == 403 && request.header("X-Retry") == null) {
+            response.close()
+
+            val newToken = runBlocking {
+                try {
+                    val refreshToken = preferencesRepository.settings.first().refreshToken
+                    if (refreshToken.isBlank()) return@runBlocking null
+                    val result = apiServiceProvider.get().refresh(RefreshRequest(refreshToken))
+                    if (result.isSuccessful && result.body() != null) {
+                        val body = result.body()!!
+                        preferencesRepository.saveTokens(body.token, body.refresh)
+                        body.token
+                    } else null
+                } catch (_: Exception) { null }
+            }
+
+            if (newToken != null) {
+                val retryRequest = request.newBuilder()
+                    .header("Authorization", "Bearer $newToken")
+                    .header("X-Retry", "true")
+                    .build()
+                return chain.proceed(retryRequest)
+            }
+        }
+
+        return response
     }
 }

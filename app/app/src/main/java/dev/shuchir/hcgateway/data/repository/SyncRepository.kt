@@ -14,6 +14,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -30,6 +31,10 @@ class SyncRepository @Inject constructor(
     private val preferencesRepository: PreferencesRepository,
     private val gson: Gson,
 ) {
+    companion object {
+        const val MIN_SYNC_DISPLAY_MS = 1000L
+    }
+
     private val _syncState = MutableStateFlow<SyncState>(SyncState.Idle)
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
 
@@ -60,6 +65,7 @@ class SyncRepository @Inject constructor(
         currentRecordCount = 0
         val typeResults = currentTypeResults
         var totalRecords = 0
+        val syncStartTime = System.currentTimeMillis()
 
         try {
             val settings = preferencesRepository.settings.first()
@@ -77,6 +83,12 @@ class SyncRepository @Inject constructor(
             } else {
                 val startTime = Instant.now().minusSeconds(29 * 24 * 60 * 60L)
                 totalRecords = fullSync(startTime, Instant.now(), typeResults)
+            }
+
+            // Ensure minimum display time for progress animation
+            val elapsed = System.currentTimeMillis() - syncStartTime
+            if (elapsed < MIN_SYNC_DISPLAY_MS) {
+                kotlinx.coroutines.delay(MIN_SYNC_DISPLAY_MS - elapsed)
             }
 
             preferencesRepository.updateLastSync(System.currentTimeMillis())
@@ -100,38 +112,33 @@ class SyncRepository @Inject constructor(
         endTime: Instant,
         typeResults: MutableList<TypeSyncResult>,
     ): Int {
-        var totalRecords = 0
+        val completed = AtomicInteger(0)
+        val totalRecordsAtomic = AtomicInteger(0)
 
-        val results = coroutineScope {
+        // Read and upload each type in parallel
+        coroutineScope {
             RECORD_TYPES.map { type ->
                 async {
                     try {
                         val records = healthConnectRepository.readRecords(
                             type.recordClass, startTime, endTime
                         )
-                        type.name to records
-                    } catch (e: Exception) {
-                        type.name to emptyList()
+                        if (records.isNotEmpty()) {
+                            val json = healthConnectRepository.recordsToJson(records)
+                            apiService.syncRecords(type.name, SyncRequest(json))
+                            totalRecordsAtomic.addAndGet(records.size)
+                            currentRecordCount = totalRecordsAtomic.get()
+                            synchronized(typeResults) {
+                                typeResults.add(TypeSyncResult(type.name, records.size))
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // Continue with next type
                     }
+                    val done = completed.incrementAndGet()
+                    _syncState.value = SyncState.Syncing(type.name, done, RECORD_TYPES.size)
                 }
             }.awaitAll()
-        }
-
-        for ((index, pair) in results.withIndex()) {
-            val (typeName, records) = pair
-            _syncState.value = SyncState.Syncing(typeName, index + 1, RECORD_TYPES.size)
-
-            if (records.isNotEmpty()) {
-                try {
-                    val json = healthConnectRepository.recordsToJson(records)
-                    apiService.syncRecords(typeName, SyncRequest(json))
-                    totalRecords += records.size
-                    currentRecordCount = totalRecords
-                    typeResults.add(TypeSyncResult(typeName, records.size))
-                } catch (e: Exception) {
-                    // Continue with next type
-                }
-            }
         }
 
         try {
@@ -139,7 +146,7 @@ class SyncRepository @Inject constructor(
             preferencesRepository.updateChangesToken(token)
         } catch (_: Exception) { }
 
-        return totalRecords
+        return totalRecordsAtomic.get()
     }
 
     private suspend fun deltaSync(
