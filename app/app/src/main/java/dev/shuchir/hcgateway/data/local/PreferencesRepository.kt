@@ -95,6 +95,10 @@ class PreferencesRepository @Inject constructor(
         dataStore.edit { it[UserPreferences.START_ON_BOOT] = enabled }
     }
 
+    suspend fun updateSentryEnabled(enabled: Boolean) {
+        dataStore.edit { it[UserPreferences.SENTRY_ENABLED] = enabled }
+    }
+
     suspend fun updateAutoSyncEnabled(enabled: Boolean) {
         dataStore.edit { it[UserPreferences.AUTO_SYNC_ENABLED] = enabled }
     }
