@@ -22,7 +22,21 @@ class HCGatewayApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         initSentry()
+        initThemeMode()
         startServiceIfLoggedIn()
+    }
+
+    private fun initThemeMode() {
+        CoroutineScope(Dispatchers.IO).launch {
+            val mode = preferencesRepository.themeMode.first()
+            androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+                when (mode) {
+                    "light" -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+                    "dark" -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                    else -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+                }
+            )
+        }
     }
 
     private fun initSentry() {

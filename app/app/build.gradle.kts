@@ -107,6 +107,7 @@ dependencies {
     // Core
     implementation(libs.core.ktx)
     implementation(libs.core.splashscreen)
+    implementation("androidx.appcompat:appcompat:1.7.0")
 
     // AboutLibraries
     implementation(libs.aboutlibraries.core)
