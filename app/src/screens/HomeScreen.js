@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
-import { Text, TextInput, Button, Card, Divider, useTheme } from 'react-native-paper';
+import { Text, TextInput, Button, Card, Divider, SegmentedButtons, useTheme } from 'react-native-paper';
 import M3Switch from '../components/M3Switch';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
@@ -30,9 +30,9 @@ const formatLastSync = (lastSync) => {
 
 export default function HomeScreen() {
   const {
-    lastSync, apiBase, taskDelay, fullSyncMode, sentryEnabled,
+    lastSync, apiBase, taskDelay, fullSyncMode, sentryEnabled, themeMode,
     doLogout, doSync, updateApiBase, updateTaskDelay,
-    updateFullSyncMode, updateSentryEnabled,
+    updateFullSyncMode, updateSentryEnabled, updateThemeMode,
   } = useAppState();
   const theme = useTheme();
 
@@ -48,7 +48,7 @@ export default function HomeScreen() {
         <Text variant="headlineMedium" style={styles.title}>HCGateway</Text>
 
         {/* Status Card */}
-        <Card style={styles.card} mode="contained">
+        <Card style={styles.card} mode="elevated">
           <Card.Content>
             <View style={styles.statusRow}>
               <View style={styles.statusDot} />
@@ -61,7 +61,7 @@ export default function HomeScreen() {
         </Card>
 
         {/* Sync Card */}
-        <Card style={styles.card} mode="contained">
+        <Card style={styles.card} mode="elevated">
           <Card.Content>
             <Text variant="titleMedium" style={styles.sectionTitle}>Sync</Text>
 
@@ -96,7 +96,7 @@ export default function HomeScreen() {
         </Card>
 
         {/* Settings Card */}
-        <Card style={styles.card} mode="contained">
+        <Card style={styles.card} mode="elevated">
           <Card.Content>
             <Text variant="titleMedium" style={styles.sectionTitle}>Settings</Text>
 
@@ -106,7 +106,7 @@ export default function HomeScreen() {
               defaultValue={apiBase}
               onChangeText={updateApiBase}
               style={[styles.input, { backgroundColor: 'transparent' }]}
-              theme={{ colors: { background: theme.colors.surfaceVariant } }}
+              theme={{ colors: { background: theme.colors.elevation.level1 } }}
             />
 
             <TextInput
@@ -119,7 +119,7 @@ export default function HomeScreen() {
                 if (hours > 0) updateTaskDelay(hours);
               }}
               style={[styles.input, { backgroundColor: 'transparent' }]}
-              theme={{ colors: { background: theme.colors.surfaceVariant } }}
+              theme={{ colors: { background: theme.colors.elevation.level1 } }}
             />
 
             <Divider style={styles.divider} />
@@ -163,6 +163,20 @@ export default function HomeScreen() {
               </View>
               <M3Switch value={sentryEnabled} onValueChange={updateSentryEnabled} />
             </View>
+
+            <Divider style={styles.divider} />
+
+            <Text variant="bodyLarge" style={{ marginBottom: 8 }}>Theme</Text>
+            <SegmentedButtons
+              value={themeMode}
+              onValueChange={updateThemeMode}
+              buttons={[
+                { value: 'light', label: 'Light', icon: 'white-balance-sunny' },
+                { value: 'system', label: 'System', icon: 'cellphone' },
+                { value: 'dark', label: 'Dark', icon: 'moon-waning-crescent' },
+              ]}
+              style={styles.segmentedButtons}
+            />
           </Card.Content>
         </Card>
 
@@ -216,6 +230,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 16,
     marginBottom: 12,
+    elevation: 1,
   },
   sectionTitle: {
     fontWeight: '600',
@@ -242,7 +257,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   syncButton: {
-    borderRadius: 12,
+    borderRadius: 999,
   },
   buttonContent: {
     paddingVertical: 6,
@@ -259,9 +274,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
   },
+  segmentedButtons: {
+    marginBottom: 4,
+  },
   logoutButton: {
     marginTop: 8,
-    borderRadius: 12,
+    borderRadius: 999,
     borderColor: '#d93025',
   },
 });
