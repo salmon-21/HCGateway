@@ -50,6 +50,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { preferencesRepository.updateStartOnBoot(enabled) }
     }
 
+    fun updateSentryEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.updateSentryEnabled(enabled) }
+    }
+
     fun updateAutoSyncEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.updateAutoSyncEnabled(enabled)

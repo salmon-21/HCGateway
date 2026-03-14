@@ -40,11 +40,14 @@ class HCGatewayApp : Application(), Configuration.Provider {
     }
 
     private fun initSentry() {
-        val dsn = applicationInfo.metaData?.getString("io.sentry.dsn")
-        if (!dsn.isNullOrBlank()) {
-            SentryAndroid.init(this) { options ->
-                options.dsn = dsn
-                options.tracesSampleRate = 1.0
+        CoroutineScope(Dispatchers.IO).launch {
+            val enabled = preferencesRepository.settings.first().sentryEnabled
+            val dsn = applicationInfo.metaData?.getString("io.sentry.dsn")
+            if (enabled && !dsn.isNullOrBlank()) {
+                SentryAndroid.init(this@HCGatewayApp) { options ->
+                    options.dsn = dsn
+                    options.tracesSampleRate = 1.0
+                }
             }
         }
     }
