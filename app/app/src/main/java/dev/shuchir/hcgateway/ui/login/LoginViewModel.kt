@@ -6,6 +6,7 @@ import com.google.firebase.messaging.FirebaseMessaging
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.shuchir.hcgateway.data.local.PreferencesRepository
 import dev.shuchir.hcgateway.data.repository.AuthRepository
+import dev.shuchir.hcgateway.worker.SyncScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +28,7 @@ data class LoginUiState(
 class LoginViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val preferencesRepository: PreferencesRepository,
+    private val syncScheduler: SyncScheduler,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LoginUiState())
@@ -94,6 +96,9 @@ class LoginViewModel @Inject constructor(
             )
 
             _uiState.value = if (result.isSuccess) {
+                // Schedule background sync on login
+                val syncInterval = preferencesRepository.settings.first().syncInterval
+                syncScheduler.schedule(syncInterval)
                 _uiState.value.copy(isLoading = false, password = "")
             } else {
                 _uiState.value.copy(

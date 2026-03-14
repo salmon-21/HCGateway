@@ -10,12 +10,10 @@ import dev.shuchir.hcgateway.data.local.PreferencesRepository
 import dev.shuchir.hcgateway.data.local.UserSettings
 import dev.shuchir.hcgateway.data.remote.ApiService
 import dev.shuchir.hcgateway.data.remote.RefreshRequest
-import dev.shuchir.hcgateway.data.repository.AuthRepository
 import dev.shuchir.hcgateway.data.repository.HealthConnectRepository
 import dev.shuchir.hcgateway.data.repository.NetworkMonitor
 import dev.shuchir.hcgateway.data.repository.SyncRepository
 import dev.shuchir.hcgateway.domain.model.SyncState
-import dev.shuchir.hcgateway.worker.SyncScheduler
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -31,10 +29,8 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val preferencesRepository: PreferencesRepository,
-    private val authRepository: AuthRepository,
     private val syncRepository: SyncRepository,
     private val healthConnectRepository: HealthConnectRepository,
-    private val syncScheduler: SyncScheduler,
     private val apiService: ApiService,
     private val networkMonitor: NetworkMonitor,
 ) : ViewModel() {
@@ -122,44 +118,24 @@ class HomeViewModel @Inject constructor(
     }
 
     fun syncNow() {
-        viewModelScope.launch {
+        val job = viewModelScope.launch {
             syncRepository.sync()
         }
+        syncRepository.setSyncJob(job)
     }
 
     fun syncRange(startDate: LocalDate, endDate: LocalDate) {
-        viewModelScope.launch {
+        val job = viewModelScope.launch {
             syncRepository.sync(startDate, endDate)
         }
+        syncRepository.setSyncJob(job)
+    }
+
+    fun cancelSync() {
+        syncRepository.cancel()
     }
 
     fun resetSyncState() {
         syncRepository.resetState()
-    }
-
-    fun updateThemeMode(mode: String) {
-        viewModelScope.launch {
-            preferencesRepository.updateThemeMode(mode)
-        }
-    }
-
-    fun updateSyncInterval(minutes: Int) {
-        viewModelScope.launch {
-            preferencesRepository.updateSyncInterval(minutes)
-            syncScheduler.schedule(minutes)
-        }
-    }
-
-    fun updateFullSyncMode(enabled: Boolean) {
-        viewModelScope.launch {
-            preferencesRepository.updateFullSyncMode(enabled)
-        }
-    }
-
-    fun logout() {
-        viewModelScope.launch {
-            syncScheduler.cancel()
-            authRepository.logout()
-        }
     }
 }
