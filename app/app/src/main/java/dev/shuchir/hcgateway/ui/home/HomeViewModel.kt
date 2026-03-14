@@ -44,6 +44,8 @@ class HomeViewModel @Inject constructor(
 
     val isHealthConnectAvailable: Boolean get() = healthConnectRepository.isAvailable
 
+    var tableHeightPx: Int = 0
+
     // null = checking, true = reachable, false = unreachable
     private val _serverReachable = MutableStateFlow<Boolean?>(null)
     val serverReachable: StateFlow<Boolean?> = _serverReachable.asStateFlow()

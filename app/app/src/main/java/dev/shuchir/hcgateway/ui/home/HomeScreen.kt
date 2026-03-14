@@ -3,6 +3,9 @@ package dev.shuchir.hcgateway.ui.home
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.Crossfade
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
@@ -71,7 +74,7 @@ fun HomeScreen(
     }
 
 
-    var isRefreshing by remember { mutableStateOf(true) }
+    var isRefreshing by remember { mutableStateOf(serverCounts == null) }
     val pullToRefreshState = rememberPullToRefreshState()
 
     LaunchedEffect(isRefreshing) {
@@ -358,7 +361,27 @@ fun HomeScreen(
                             modifier = Modifier.padding(bottom = 8.dp),
                         )
                     }
-                    DataOverviewTable(pendingCounts, serverCounts, hasEverSynced = settings.lastSync > 0)
+                    Crossfade(
+                        targetState = serverCounts != null,
+                        label = "tableAnim",
+                        modifier = Modifier.then(
+                            if (viewModel.tableHeightPx > 0) Modifier.heightIn(min = with(LocalDensity.current) { viewModel.tableHeightPx.toDp() })
+                            else Modifier
+                        ),
+                    ) { loaded ->
+                        if (loaded) {
+                            Column(modifier = Modifier.onGloballyPositioned { viewModel.tableHeightPx = it.size.height }) {
+                                DataOverviewTable(pendingCounts, serverCounts, hasEverSynced = settings.lastSync > 0)
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                LoadingIndicator(modifier = Modifier.size(32.dp))
+                            }
+                        }
+                    }
                 }
             }
 
@@ -422,15 +445,7 @@ private fun DataOverviewTable(
     serverCounts: Map<String, Int>?,
     hasEverSynced: Boolean = false,
 ) {
-    if (serverCounts == null) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            LoadingIndicator(modifier = Modifier.size(32.dp))
-        }
-        return
-    }
+    if (serverCounts == null) return
 
     val allTypes = (pendingCounts.keys + serverCounts.keys).distinct()
         .sortedByDescending { serverCounts[it] ?: 0 }
