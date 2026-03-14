@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.ui.res.painterResource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -182,6 +183,21 @@ fun SettingsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.Start,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("App version", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+                    Text("Version ${dev.shuchir.hcgateway.BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
                     .clickable {
                         val intent = Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS")
                         try { context.startActivity(intent) } catch (_: Exception) {
@@ -253,15 +269,6 @@ fun SettingsScreen(
                 Spacer(Modifier.width(12.dp))
                 Text("Open source licenses", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
             }
-
-
-            // Version
-            Text(
-                "Version ${dev.shuchir.hcgateway.BuildConfig.VERSION_NAME}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, top = 8.dp),
-            )
 
             // --- Account section ---
             SectionLabel("Account")
