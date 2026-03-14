@@ -20,6 +20,7 @@ object UserPreferences {
     val USE_HTTPS = booleanPreferencesKey("use_https")
     val LAST_SYNC_RESULTS = stringPreferencesKey("last_sync_results") // JSON: [{"typeName":"Steps","recordCount":38},...]
     val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
+    val START_ON_BOOT = booleanPreferencesKey("start_on_boot")
 }
 
 data class UserSettings(
@@ -36,4 +37,5 @@ data class UserSettings(
     val fcmToken: String = "",
     val useHttps: Boolean = true,
     val lastSyncResults: String = "", // JSON
+    val startOnBoot: Boolean = true,
 )

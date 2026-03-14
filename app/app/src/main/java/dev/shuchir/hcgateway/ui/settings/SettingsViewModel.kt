@@ -38,6 +38,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { preferencesRepository.updateFullSyncMode(enabled) }
     }
 
+    fun updateStartOnBoot(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.updateStartOnBoot(enabled) }
+    }
+
     fun logout() {
         viewModelScope.launch {
             syncScheduler.cancel()

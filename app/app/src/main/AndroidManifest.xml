@@ -111,6 +111,11 @@
         </activity-alias>
 
         <service
+            android:name=".worker.PersistentSyncService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
             android:name=".fcm.HCGatewayFirebaseService"
             android:exported="false">
             <intent-filter>

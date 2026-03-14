@@ -27,6 +27,7 @@ class PreferencesRepository @Inject constructor(
             fcmToken = prefs[UserPreferences.FCM_TOKEN] ?: "",
             useHttps = prefs[UserPreferences.USE_HTTPS] ?: true,
             lastSyncResults = prefs[UserPreferences.LAST_SYNC_RESULTS] ?: "",
+            startOnBoot = prefs[UserPreferences.START_ON_BOOT] ?: true,
         )
     }
 
@@ -87,6 +88,10 @@ class PreferencesRepository @Inject constructor(
 
     suspend fun updateLastSyncResults(json: String) {
         dataStore.edit { it[UserPreferences.LAST_SYNC_RESULTS] = json }
+    }
+
+    suspend fun updateStartOnBoot(enabled: Boolean) {
+        dataStore.edit { it[UserPreferences.START_ON_BOOT] = enabled }
     }
 
     suspend fun clearSession() {
