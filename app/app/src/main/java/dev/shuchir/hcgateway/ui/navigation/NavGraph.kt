@@ -2,9 +2,14 @@ package dev.shuchir.hcgateway.ui.navigation
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -18,6 +23,7 @@ import dev.shuchir.hcgateway.ui.login.LoginScreen
 import dev.shuchir.hcgateway.ui.onboarding.PermissionOnboardingScreen
 import dev.shuchir.hcgateway.ui.settings.SettingsScreen
 import dev.shuchir.hcgateway.ui.theme.HCGatewayTheme
+import dev.shuchir.hcgateway.worker.PersistentSyncService
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -52,6 +58,22 @@ fun NavGraph(
 ) {
     val authState by viewModel.authState.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
+    val context = LocalContext.current
+
+    // Start/stop persistent service based on auth state
+    LaunchedEffect(authState) {
+        when (authState) {
+            AuthState.LoggedIn -> {
+                try {
+                    PersistentSyncService.start(context)
+                } catch (e: Exception) {
+                    android.util.Log.e("NavGraph", "Failed to start service", e)
+                }
+            }
+            AuthState.LoggedOut -> PersistentSyncService.stop(context)
+            else -> {}
+        }
+    }
 
     HCGatewayTheme(themeMode = themeMode) {
         AnimatedContent(
@@ -87,6 +109,7 @@ private fun AuthenticatedNavGraph() {
     NavHost(
         navController = navController,
         startDestination = "home",
+        modifier = Modifier.background(MaterialTheme.colorScheme.surface),
         enterTransition = { enterTransition },
         exitTransition = { exitTransition },
         popEnterTransition = { popEnterTransition },

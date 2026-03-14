@@ -149,14 +149,7 @@ fun HomeScreen(
                 // Sync status / actions
                 when (val state = syncState) {
                     is SyncState.Syncing -> {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("Syncing...", style = MaterialTheme.typography.titleMedium)
-                            OutlinedButton(onClick = viewModel::cancelSync) { Text("Cancel") }
-                        }
+                        Text("Syncing...", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(8.dp))
                         LinearProgressIndicator(
                             progress = { state.typesCompleted.toFloat() / state.totalTypes },
@@ -169,6 +162,11 @@ fun HomeScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = viewModel::cancelSync,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Cancel") }
                     }
                     is SyncState.Done -> { /* auto-dismissed above */ }
                     is SyncState.Error -> {

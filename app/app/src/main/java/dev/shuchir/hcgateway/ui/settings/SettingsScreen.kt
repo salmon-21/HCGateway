@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -80,6 +81,28 @@ fun SettingsScreen(
                 )
             }
 
+            // Start on boot
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Start on boot", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+                    Text(
+                        "Resume background sync after device restart",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = settings.startOnBoot,
+                    onCheckedChange = viewModel::updateStartOnBoot,
+                )
+            }
+
             // Sync interval
             SettingsItem(title = "Auto-sync interval") {
                 SyncIntervalPicker(
@@ -88,7 +111,6 @@ fun SettingsScreen(
                 )
             }
 
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
             // --- Appearance section ---
             SectionLabel("Appearance")
@@ -105,7 +127,6 @@ fun SettingsScreen(
                 }
             }
 
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
             // --- About section ---
             SectionLabel("About")
@@ -121,17 +142,23 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column {
-                    Text("Source code", style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        "github.com/shuchir/HCGateway",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text("Source code", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
             }
 
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/shuchir/HCGateway/issues"))
+                        context.startActivity(intent)
+                    }
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Report a bug", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+            }
+
 
             // --- Account section ---
             SectionLabel("Account")
@@ -144,14 +171,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column {
-                    Text("Logout", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
-                    Text(
-                        "Signed in as ${settings.username}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text("Logout", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.error)
                 Icon(
                     Icons.AutoMirrored.Filled.Logout,
                     contentDescription = null,
@@ -183,7 +203,7 @@ fun SettingsScreen(
 private fun SectionLabel(text: String) {
     Text(
         text = text,
-        style = MaterialTheme.typography.labelMedium,
+        style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(start = 16.dp, top = 24.dp, bottom = 8.dp),
     )
@@ -199,7 +219,7 @@ private fun SettingsItem(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
-        Text(title, style = MaterialTheme.typography.bodyLarge)
+        Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
         Spacer(Modifier.height(8.dp))
         content()
     }

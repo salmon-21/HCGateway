@@ -24,8 +24,9 @@ class BootReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val settings = preferencesRepository.settings.first()
-                if (settings.token.isNotBlank()) {
+                if (settings.token.isNotBlank() && settings.startOnBoot) {
                     syncScheduler.schedule(settings.syncInterval)
+                    PersistentSyncService.start(context)
                 }
             } finally {
                 pendingResult.finish()
