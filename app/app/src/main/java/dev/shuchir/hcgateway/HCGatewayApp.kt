@@ -22,6 +22,12 @@ class HCGatewayApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        // Initialize WorkManager with Hilt worker factory before any usage
+        try {
+            androidx.work.WorkManager.initialize(this, workManagerConfiguration)
+        } catch (_: IllegalStateException) {
+            // Already initialized
+        }
         initSentry()
         initThemeMode()
         startServiceIfLoggedIn()
