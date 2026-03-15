@@ -10,7 +10,7 @@ plugins {
 
 android {
     namespace = "dev.shuchir.hcgateway"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "dev.shuchir.hcgateway"
