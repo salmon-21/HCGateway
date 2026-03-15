@@ -69,18 +69,45 @@ class PersistentSyncService : Service() {
         }
     }
 
+    private var syncTimerJob: kotlinx.coroutines.Job? = null
+
     private fun startInAppSyncTimer() {
+        // Start initial timer, then watch for settings changes
         scope.launch {
-            while (true) {
-                val settings = preferencesRepository.settings.first()
-                if (settings.autoSyncEnabled) {
-                    kotlinx.coroutines.delay(settings.syncInterval * 60_000L)
-                    // Re-check in case auto sync was disabled during the wait
-                    if (preferencesRepository.settings.first().autoSyncEnabled) {
+            val initial = preferencesRepository.settings.first()
+            var lastInterval = initial.syncInterval
+            var lastAutoSync = initial.autoSyncEnabled
+
+            // Start initial timer
+            if (initial.autoSyncEnabled) {
+                syncTimerJob = scope.launch {
+                    while (true) {
+                        kotlinx.coroutines.delay(initial.syncInterval * 60_000L)
                         syncRepository.sync()
+                        val text = getNextSyncText()
+                        getSystemService(NotificationManager::class.java)
+                            .notify(NOTIFICATION_ID, buildPersistentNotification(text))
                     }
-                } else {
-                    kotlinx.coroutines.delay(60_000)
+                }
+            }
+
+            // Watch for changes only
+            preferencesRepository.settings.collect { settings ->
+                if (settings.syncInterval != lastInterval || settings.autoSyncEnabled != lastAutoSync) {
+                    lastInterval = settings.syncInterval
+                    lastAutoSync = settings.autoSyncEnabled
+                    syncTimerJob?.cancel()
+                    if (settings.autoSyncEnabled) {
+                        syncTimerJob = scope.launch {
+                            while (true) {
+                                kotlinx.coroutines.delay(settings.syncInterval * 60_000L)
+                                syncRepository.sync()
+                                val text = getNextSyncText()
+                                getSystemService(NotificationManager::class.java)
+                                    .notify(NOTIFICATION_ID, buildPersistentNotification(text))
+                            }
+                        }
+                    }
                 }
             }
         }

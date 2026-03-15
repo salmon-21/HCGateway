@@ -33,7 +33,7 @@ class SyncScheduler @Inject constructor(
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
-                ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE,
+                ExistingPeriodicWorkPolicy.UPDATE,
                 request,
             )
         } catch (_: Exception) {
