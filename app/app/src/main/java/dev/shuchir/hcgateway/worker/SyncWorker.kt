@@ -3,6 +3,7 @@ package dev.shuchir.hcgateway.worker
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.hilt.work.HiltWorker
@@ -30,7 +31,11 @@ class SyncWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         createNotificationChannel()
-        setForeground(createProgressInfo("Syncing health data..."))
+        try {
+            setForeground(createProgressInfo("Syncing health data..."))
+        } catch (_: Exception) {
+            // Foreground may fail if another foreground service is running
+        }
 
         return try {
             syncRepository.sync()
@@ -57,7 +62,11 @@ class SyncWorker @AssistedInject constructor(
             .setProgress(0, 0, true)
             .build()
 
-        return ForegroundInfo(NOTIFICATION_ID, notification)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(NOTIFICATION_ID, notification)
+        }
     }
 
     private fun showResultNotification(title: String, text: String) {

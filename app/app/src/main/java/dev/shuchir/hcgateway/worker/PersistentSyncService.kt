@@ -73,11 +73,13 @@ class PersistentSyncService : Service() {
         scope.launch {
             while (true) {
                 val settings = preferencesRepository.settings.first()
-                if (settings.autoSyncEnabled && settings.syncInterval < 15) {
+                if (settings.autoSyncEnabled) {
                     kotlinx.coroutines.delay(settings.syncInterval * 60_000L)
-                    syncRepository.sync()
+                    // Re-check in case auto sync was disabled during the wait
+                    if (preferencesRepository.settings.first().autoSyncEnabled) {
+                        syncRepository.sync()
+                    }
                 } else {
-                    // WorkManager handles intervals >= 15min, check again in 1min
                     kotlinx.coroutines.delay(60_000)
                 }
             }
