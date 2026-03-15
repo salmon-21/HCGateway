@@ -20,21 +20,24 @@ class SyncScheduler @Inject constructor(
     }
 
     fun schedule(intervalMinutes: Int) {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
+        try {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
 
-        val request = PeriodicWorkRequestBuilder<SyncWorker>(
-            intervalMinutes.toLong(), TimeUnit.MINUTES,
-        )
-            .setConstraints(constraints)
-            .build()
+            val request = PeriodicWorkRequestBuilder<SyncWorker>(
+                intervalMinutes.toLong(), TimeUnit.MINUTES,
+            )
+                .setConstraints(constraints)
+                .build()
 
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            WORK_NAME,
-            ExistingPeriodicWorkPolicy.UPDATE,
-            request,
-        )
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                WORK_NAME,
+                ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE,
+                request,
+            )
+        } catch (_: Exception) {
+        }
     }
 
     fun cancel() {
