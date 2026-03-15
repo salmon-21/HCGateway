@@ -18,6 +18,7 @@ class HCGatewayApp : Application(), Configuration.Provider {
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var preferencesRepository: PreferencesRepository
+    @Inject lateinit var syncScheduler: dev.shuchir.hcgateway.worker.SyncScheduler
 
     override fun onCreate() {
         super.onCreate()
@@ -50,9 +51,12 @@ class HCGatewayApp : Application(), Configuration.Provider {
 
     private fun startServiceIfLoggedIn() {
         CoroutineScope(Dispatchers.IO).launch {
-            val loggedIn = preferencesRepository.isLoggedIn.first()
-            if (loggedIn) {
+            val settings = preferencesRepository.settings.first()
+            if (settings.token.isNotBlank()) {
                 PersistentSyncService.start(this@HCGatewayApp)
+                if (settings.autoSyncEnabled) {
+                    syncScheduler.schedule(settings.syncInterval)
+                }
             }
         }
     }
