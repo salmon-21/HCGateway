@@ -454,7 +454,7 @@ private fun SyncIntervalPicker(
                 supportingText = {
                     Text(
                         when {
-                            isError -> "Invalid format. Use e.g. 30m, 2h, 1d (min 15m, max 7d)"
+                            isError -> "Invalid format. Use e.g. 30m, 2h, 1d (min 1m, max 7d)"
                             parsed != null -> "Set to ${formatInterval(parsed)}"
                             else -> "Use m (minutes), h (hours), d (days)"
                         }
@@ -495,6 +495,6 @@ private fun parseIntervalInput(input: String): Int? {
         else -> return null
     }
 
-    if (minutes < 15 || minutes > 10080) return null
+    if (minutes < 1 || minutes > 10080) return null
     return minutes
 }
