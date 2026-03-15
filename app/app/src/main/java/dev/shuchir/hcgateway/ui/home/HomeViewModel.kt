@@ -176,6 +176,23 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    suspend fun refreshTable() {
+        // Null out to show LoadingIndicator, then fetch both and wait for completion
+        _serverCounts.value = null
+        loadPendingCounts()
+        // Fetch server counts synchronously so we wait for the result
+        try {
+            val response = apiService.getCounts()
+            _serverCounts.value = if (response.isSuccessful && response.body() != null) {
+                response.body()!!
+            } else {
+                emptyMap()
+            }
+        } catch (_: Exception) {
+            _serverCounts.value = emptyMap()
+        }
+    }
+
     fun checkPermissions() {
         viewModelScope.launch {
             _hasPermissions.value = healthConnectRepository.hasAllPermissions()

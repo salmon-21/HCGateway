@@ -69,9 +69,7 @@ fun HomeScreen(
             viewModel.loadServerCounts()
             while (true) {
                 kotlinx.coroutines.delay(60_000)
-                viewModel.resetServerCounts()
-                viewModel.loadPendingCounts()
-                viewModel.loadServerCounts()
+                viewModel.refreshTable()
             }
         }
     }
@@ -82,11 +80,8 @@ fun HomeScreen(
 
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {
-            viewModel.resetServerCounts()
-            viewModel.loadPendingCounts()
-            viewModel.loadServerCounts()
+            viewModel.refreshTable()
             viewModel.checkServerConnection()
-            kotlinx.coroutines.delay(500)
             isRefreshing = false
         }
     }
