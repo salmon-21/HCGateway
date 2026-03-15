@@ -60,11 +60,27 @@ class PersistentSyncService : Service() {
         createNotificationChannels()
         startForeground(NOTIFICATION_ID, buildPersistentNotification("Idle"))
         observeSyncState()
+        startInAppSyncTimer()
         // Update with actual schedule after startup
         scope.launch {
             val text = getNextSyncText()
             getSystemService(NotificationManager::class.java)
                 .notify(NOTIFICATION_ID, buildPersistentNotification(text))
+        }
+    }
+
+    private fun startInAppSyncTimer() {
+        scope.launch {
+            while (true) {
+                val settings = preferencesRepository.settings.first()
+                if (settings.autoSyncEnabled && settings.syncInterval < 15) {
+                    kotlinx.coroutines.delay(settings.syncInterval * 60_000L)
+                    syncRepository.sync()
+                } else {
+                    // WorkManager handles intervals >= 15min, check again in 1min
+                    kotlinx.coroutines.delay(60_000)
+                }
+            }
         }
     }
 
