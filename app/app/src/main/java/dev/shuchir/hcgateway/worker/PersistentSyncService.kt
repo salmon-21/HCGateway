@@ -121,9 +121,11 @@ class PersistentSyncService : Service() {
                         manager.notify(NOTIFICATION_ID, buildPersistentNotification(nextSyncText))
                     }
                     is SyncState.Syncing -> {
-                        val text = if (state.typesCompleted > 0) {
-                            "${state.typesCompleted}/${state.totalTypes} types"
-                        } else "Starting..."
+                        val text = when {
+                            state.recordsSynced > 0 -> "${state.typesCompleted}/${state.totalTypes} types · ${state.recordsSynced} records"
+                            state.typesCompleted > 0 -> "${state.typesCompleted}/${state.totalTypes} types"
+                            else -> "Starting..."
+                        }
                         manager.notify(NOTIFICATION_ID, buildPersistentNotification(text, state.typesCompleted, state.totalTypes))
                     }
                     is SyncState.Done -> {

@@ -133,21 +133,34 @@ class SyncRepository @Inject constructor(
                             ) { page ->
                                 val json = healthConnectRepository.recordsToJson(page)
                                 apiService.syncRecords(type.name, SyncRequest(json))
+                                val synced = totalRecordsAtomic.addAndGet(page.size)
+                                currentRecordCount = synced
+                                _syncState.value = SyncState.Syncing(
+                                    type.name, completed.get(), RECORD_TYPES.size, synced,
+                                )
                             }
                             if (typeTotal > 0) {
                                 android.util.Log.d("Sync", "${type.name}: $typeTotal records")
-                                totalRecordsAtomic.addAndGet(typeTotal)
-                                currentRecordCount = totalRecordsAtomic.get()
                                 synchronized(typeResults) {
                                     typeResults.add(TypeSyncResult(type.name, typeTotal))
                                 }
                             }
                         } catch (e: Exception) {
-                            android.util.Log.e("Sync", "${type.name} failed: ${e.message}", e)
-                            synchronized(failedTypes) { failedTypes.add(type.name) }
+                            // Skip unsupported types (SecurityException = no permission granted by HC)
+                            val isUnsupported = e is SecurityException ||
+                                e.cause is SecurityException ||
+                                e.message?.contains("SecurityException") == true
+                            if (!isUnsupported) {
+                                android.util.Log.e("Sync", "${type.name} failed: ${e.message}", e)
+                                synchronized(failedTypes) { failedTypes.add(type.name) }
+                            } else {
+                                android.util.Log.d("Sync", "${type.name}: skipped (unsupported)")
+                            }
                         }
                         val done = completed.incrementAndGet()
-                        _syncState.value = SyncState.Syncing(type.name, done, RECORD_TYPES.size)
+                        _syncState.value = SyncState.Syncing(
+                            type.name, done, RECORD_TYPES.size, totalRecordsAtomic.get(),
+                        )
                     }
                 }
             }.awaitAll()
@@ -197,7 +210,9 @@ class SyncRepository @Inject constructor(
                         }
                     }
                     val done = completed.incrementAndGet()
-                    _syncState.value = SyncState.Syncing(typeName, done, totalTypes)
+                    _syncState.value = SyncState.Syncing(
+                        typeName, done, totalTypes, totalRecordsAtomic.get(),
+                    )
                 }
             }.awaitAll()
         }
