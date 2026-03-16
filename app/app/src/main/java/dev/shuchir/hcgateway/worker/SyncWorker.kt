@@ -15,12 +15,14 @@ import dagger.assisted.AssistedInject
 import dev.shuchir.hcgateway.R
 import dev.shuchir.hcgateway.data.repository.SyncRepository
 import dev.shuchir.hcgateway.domain.model.SyncState
+import kotlinx.coroutines.flow.first
 
 @HiltWorker
 class SyncWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
     private val syncRepository: SyncRepository,
+    private val preferencesRepository: dev.shuchir.hcgateway.data.local.PreferencesRepository,
 ) : CoroutineWorker(appContext, workerParams) {
 
     companion object {
@@ -30,6 +32,14 @@ class SyncWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result {
+        // Skip if last sync was too recent (prevents duplicate sync on foreground resume)
+        val settings = preferencesRepository.settings.first()
+        if (settings.lastSync > 0) {
+            val elapsed = System.currentTimeMillis() - settings.lastSync
+            val minInterval = settings.syncInterval * 60_000L * 3 / 4 // 75% of interval
+            if (elapsed < minInterval) return Result.success()
+        }
+
         createNotificationChannel()
         try {
             setForeground(createProgressInfo("Syncing health data..."))

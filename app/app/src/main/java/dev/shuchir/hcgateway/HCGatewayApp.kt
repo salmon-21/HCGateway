@@ -18,16 +18,9 @@ class HCGatewayApp : Application(), Configuration.Provider {
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var preferencesRepository: PreferencesRepository
-    @Inject lateinit var syncScheduler: dev.shuchir.hcgateway.worker.SyncScheduler
 
     override fun onCreate() {
         super.onCreate()
-        // Initialize WorkManager with Hilt worker factory before any usage
-        try {
-            androidx.work.WorkManager.initialize(this, workManagerConfiguration)
-        } catch (_: IllegalStateException) {
-            // Already initialized
-        }
         initSentry()
         initThemeMode()
         startServiceIfLoggedIn()
@@ -60,9 +53,6 @@ class HCGatewayApp : Application(), Configuration.Provider {
             val settings = preferencesRepository.settings.first()
             if (settings.token.isNotBlank()) {
                 PersistentSyncService.start(this@HCGatewayApp)
-                if (settings.autoSyncEnabled) {
-                    syncScheduler.schedule(settings.syncInterval)
-                }
             }
         }
     }
