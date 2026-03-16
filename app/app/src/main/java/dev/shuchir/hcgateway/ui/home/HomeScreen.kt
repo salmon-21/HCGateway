@@ -236,6 +236,8 @@ fun HomeScreen(
 
                 // syncSource: 0 = Sync (left), 1 = Force Sync (right)
                 val showCancel = isSyncing || isDone || pendingSync != null
+                var cancelRequested by remember { mutableStateOf(false) }
+                if (!showCancel) cancelRequested = false
 
                 Text("Sync", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 12.dp))
 
@@ -346,9 +348,10 @@ fun HomeScreen(
                             when {
                                 // Sync pressed → left becomes Cancel
                                 showCancel && syncSource == 0 -> OutlinedButton(
-                                    onClick = { viewModel.cancelSync() },
+                                    onClick = { cancelRequested = true; viewModel.cancelSync() },
                                     modifier = Modifier.weight(leftWeight).fillMaxHeight(),
                                     shapes = ButtonDefaults.shapes(),
+                                    enabled = !cancelRequested,
                                 ) { Text("Cancel") }
                                 // Force Sync pressed → left is shrinking placeholder
                                 showCancel && syncSource == 1 -> Spacer(Modifier.weight(leftWeight))
@@ -370,9 +373,10 @@ fun HomeScreen(
                             when {
                                 // Force Sync pressed → right becomes Cancel
                                 showCancel && syncSource == 1 -> OutlinedButton(
-                                    onClick = { viewModel.cancelSync() },
+                                    onClick = { cancelRequested = true; viewModel.cancelSync() },
                                     modifier = Modifier.weight(rightWeight).fillMaxHeight(),
                                     shapes = ButtonDefaults.shapes(),
+                                    enabled = !cancelRequested,
                                 ) { Text("Cancel") }
                                 // Sync pressed → right is shrinking placeholder
                                 showCancel && syncSource == 0 -> Spacer(Modifier.weight(rightWeight))
