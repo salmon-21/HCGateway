@@ -40,6 +40,7 @@ class PersistentSyncService : Service() {
         const val NOTIFICATION_ID = 100
         const val SYNC_RESULT_NOTIFICATION_ID = 101
         const val RESULT_DISMISS_DELAY_MS = 5000L
+        const val ACTION_CANCEL_SYNC = "dev.shuchir.hcgateway.CANCEL_SYNC"
 
         fun start(context: Context) {
             val intent = Intent(context, PersistentSyncService::class.java)
@@ -126,7 +127,7 @@ class PersistentSyncService : Service() {
                             state.typesCompleted > 0 -> "${state.typesCompleted}/${state.totalTypes} types"
                             else -> "Starting..."
                         }
-                        manager.notify(NOTIFICATION_ID, buildPersistentNotification(text, state.typesCompleted, state.totalTypes))
+                        manager.notify(NOTIFICATION_ID, buildPersistentNotification(text, state.typesCompleted, state.totalTypes, showCancel = true))
                     }
                     is SyncState.Done -> {
                         val nextSyncText = getNextSyncText()
@@ -171,6 +172,7 @@ class PersistentSyncService : Service() {
         text: String,
         progress: Int = 0,
         max: Int = 0,
+        showCancel: Boolean = false,
     ) = NotificationCompat.Builder(this, CHANNEL_ID)
         .setContentTitle("HCGateway")
         .setContentText(text)
@@ -186,6 +188,15 @@ class PersistentSyncService : Service() {
         )
         .apply {
             if (max > 0) setProgress(max, progress, false)
+            if (showCancel) {
+                val cancelIntent = Intent(this@PersistentSyncService, PersistentSyncService::class.java)
+                    .setAction(ACTION_CANCEL_SYNC)
+                val cancelPending = PendingIntent.getService(
+                    this@PersistentSyncService, 1, cancelIntent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                )
+                addAction(0, "Cancel", cancelPending)
+            }
         }
         .build()
 
@@ -229,6 +240,13 @@ class PersistentSyncService : Service() {
                 }
             )
         }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_CANCEL_SYNC) {
+            syncRepository.cancel()
+        }
+        return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
