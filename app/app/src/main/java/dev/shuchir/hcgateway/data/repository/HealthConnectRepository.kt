@@ -30,13 +30,37 @@ class HealthConnectRepository @Inject constructor(
                 HealthPermission.getReadPermission(type.recordClass),
                 HealthPermission.getWritePermission(type.recordClass),
             )
+        }.toSet() + setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)
+    }
+
+    // Required permissions for hasAllPermissions check (excludes optional permissions)
+    private val requiredPermissions: Set<String> by lazy {
+        RECORD_TYPES.flatMap { type ->
+            listOf(
+                HealthPermission.getReadPermission(type.recordClass),
+                HealthPermission.getWritePermission(type.recordClass),
+            )
         }.toSet()
     }
 
     suspend fun hasAllPermissions(): Boolean {
         val client = healthConnectClient ?: return false
         val granted = client.permissionController.getGrantedPermissions()
-        return permissions.all { it in granted }
+        // Check that all granted-capable permissions are granted.
+        // Permissions for experimental/unsupported record types (e.g. MindfulnessSession)
+        // may not be recognized by Health Connect on this device and will never appear in
+        // the granted set even with "Allow all". Count those as satisfied.
+        val supported = granted + (requiredPermissions - granted).filter { perm ->
+            // A permission is unsupported if HC doesn't list it at all.
+            // Heuristic: if HC granted at least one permission, any permission NOT in granted
+            // that also has no sibling (READ↔WRITE pair) in granted is likely unsupported.
+            val base = perm.substringAfterLast(".")
+                .removePrefix("READ_").removePrefix("WRITE_")
+            val hasReadSibling = "android.permission.health.READ_$base" in granted
+            val hasWriteSibling = "android.permission.health.WRITE_$base" in granted
+            !hasReadSibling && !hasWriteSibling
+        }
+        return requiredPermissions.all { it in supported }
     }
 
     suspend fun readRecords(
@@ -60,6 +84,38 @@ class HealthConnectRepository @Inject constructor(
         } while (pageToken != null)
 
         return allRecords
+    }
+
+    /**
+     * Reads records page by page (1000 records per page), calling [onPage] for each page.
+     * This avoids loading all records into memory at once.
+     * Returns the total number of records read.
+     */
+    suspend fun readRecordsPaged(
+        recordClass: KClass<out Record>,
+        startTime: Instant,
+        endTime: Instant,
+        onPage: suspend (List<Record>) -> Unit,
+    ): Int {
+        val client = healthConnectClient ?: return 0
+        var pageToken: String? = null
+        var total = 0
+
+        do {
+            val request = ReadRecordsRequest(
+                recordType = recordClass,
+                timeRangeFilter = TimeRangeFilter.between(startTime, endTime),
+                pageToken = pageToken,
+            )
+            val response = client.readRecords(request)
+            if (response.records.isNotEmpty()) {
+                onPage(response.records)
+                total += response.records.size
+            }
+            pageToken = response.pageToken
+        } while (pageToken != null)
+
+        return total
     }
 
     fun recordsToJson(records: List<Record>): JsonElement {

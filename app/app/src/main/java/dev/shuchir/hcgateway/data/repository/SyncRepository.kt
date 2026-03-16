@@ -13,6 +13,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.StateFlow
@@ -117,28 +118,37 @@ class SyncRepository @Inject constructor(
         val completed = AtomicInteger(0)
         val totalRecordsAtomic = AtomicInteger(0)
 
-        // Read and upload each type in parallel
+        // Stream pages: read 1000 records at a time, serialize and upload immediately,
+        // then discard. Memory usage stays bounded regardless of total record count.
+        // Limit concurrency to 4 types to keep memory reasonable.
+        val semaphore = kotlinx.coroutines.sync.Semaphore(4)
+
         coroutineScope {
             RECORD_TYPES.map { type ->
                 async {
-                    try {
-                        val records = healthConnectRepository.readRecords(
-                            type.recordClass, startTime, endTime
-                        )
-                        if (records.isNotEmpty()) {
-                            val json = healthConnectRepository.recordsToJson(records)
-                            apiService.syncRecords(type.name, SyncRequest(json))
-                            totalRecordsAtomic.addAndGet(records.size)
-                            currentRecordCount = totalRecordsAtomic.get()
-                            synchronized(typeResults) {
-                                typeResults.add(TypeSyncResult(type.name, records.size))
+                    semaphore.withPermit {
+                        try {
+                            val typeTotal = healthConnectRepository.readRecordsPaged(
+                                type.recordClass, startTime, endTime,
+                            ) { page ->
+                                val json = healthConnectRepository.recordsToJson(page)
+                                apiService.syncRecords(type.name, SyncRequest(json))
                             }
+                            if (typeTotal > 0) {
+                                android.util.Log.d("Sync", "${type.name}: $typeTotal records")
+                                totalRecordsAtomic.addAndGet(typeTotal)
+                                currentRecordCount = totalRecordsAtomic.get()
+                                synchronized(typeResults) {
+                                    typeResults.add(TypeSyncResult(type.name, typeTotal))
+                                }
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("Sync", "${type.name} failed: ${e.message}", e)
+                            synchronized(failedTypes) { failedTypes.add(type.name) }
                         }
-                    } catch (_: Exception) {
-                        synchronized(failedTypes) { failedTypes.add(type.name) }
+                        val done = completed.incrementAndGet()
+                        _syncState.value = SyncState.Syncing(type.name, done, RECORD_TYPES.size)
                     }
-                    val done = completed.incrementAndGet()
-                    _syncState.value = SyncState.Syncing(type.name, done, RECORD_TYPES.size)
                 }
             }.awaitAll()
         }
