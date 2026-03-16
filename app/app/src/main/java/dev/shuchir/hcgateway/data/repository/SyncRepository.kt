@@ -227,6 +227,8 @@ class SyncRepository @Inject constructor(
         val totalRecordsAtomic = AtomicInteger(0)
         val totalTypes = result.upsertedRecords.size
 
+        updateSyncState(SyncState.Syncing("", 0, totalTypes))
+
         coroutineScope {
             result.upsertedRecords.map { (typeName, records) ->
                 async {
