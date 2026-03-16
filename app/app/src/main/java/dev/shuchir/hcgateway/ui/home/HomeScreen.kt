@@ -251,12 +251,7 @@ fun HomeScreen(
                     animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                     label = "syncProgress",
                 )
-                val targetAmplitude = if (isDone || !showProgress) 0f else 1f
-                val amplitudeValue by animateFloatAsState(
-                    targetValue = targetAmplitude,
-                    animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-                    label = "syncAmplitude",
-                )
+                val amplitudeValue = if (isDone || !showProgress) 0f else 1f
                 val progressHeight by animateDpAsState(
                     targetValue = if (showProgress && !progressDismissing) 16.dp else 0.dp,
                     animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
