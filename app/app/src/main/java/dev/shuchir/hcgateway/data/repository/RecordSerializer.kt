@@ -1,5 +1,6 @@
 package dev.shuchir.hcgateway.data.repository
 
+import androidx.health.connect.client.feature.ExperimentalMindfulnessSessionApi
 import androidx.health.connect.client.records.*
 import androidx.health.connect.client.units.*
 import com.google.gson.JsonArray
@@ -18,6 +19,7 @@ import java.time.ZoneOffset
  * - metadata.id → string UUID
  * - metadata.dataOrigin → package name string (not an object)
  */
+@OptIn(ExperimentalMindfulnessSessionApi::class)
 object RecordSerializer {
 
     fun serializeRecords(records: List<Record>): JsonElement {
@@ -75,6 +77,10 @@ object RecordSerializer {
                 json.addProperty("temperature", record.temperature.inCelsius)
                 json.addProperty("measurementLocation", record.measurementLocation)
             }
+            is BodyWaterMassRecord -> {
+                json.addInstant(record.time)
+                json.addProperty("mass", record.mass.inKilograms)
+            }
             is BoneMassRecord -> {
                 json.addInstant(record.time)
                 json.addProperty("mass", record.mass.inKilograms)
@@ -124,6 +130,10 @@ object RecordSerializer {
                 }
                 json.add("samples", samples)
             }
+            is HeartRateVariabilityRmssdRecord -> {
+                json.addInstant(record.time)
+                json.addProperty("heartRateVariabilityMillis", record.heartRateVariabilityMillis)
+            }
             is HeightRecord -> {
                 json.addInstant(record.time)
                 json.addProperty("height", record.height.inMeters)
@@ -145,6 +155,12 @@ object RecordSerializer {
             }
             is MenstruationPeriodRecord -> {
                 json.addTimeRange(record.startTime, record.endTime)
+            }
+            is MindfulnessSessionRecord -> {
+                json.addTimeRange(record.startTime, record.endTime)
+                json.addProperty("mindfulnessSessionType", record.mindfulnessSessionType)
+                record.title?.let { json.addProperty("title", it) }
+                record.notes?.let { json.addProperty("notes", it) }
             }
             is NutritionRecord -> {
                 json.addTimeRange(record.startTime, record.endTime)
@@ -174,6 +190,31 @@ object RecordSerializer {
                 json.addInstant(record.time)
                 json.addProperty("percentage", record.percentage.value)
             }
+            is PlannedExerciseSessionRecord -> {
+                json.addTimeRange(record.startTime, record.endTime)
+                json.addProperty("exerciseType", record.exerciseType)
+                json.addProperty("hasExplicitTime", record.hasExplicitTime)
+                record.completedExerciseSessionId?.let { json.addProperty("completedExerciseSessionId", it) }
+                record.title?.let { json.addProperty("title", it) }
+                record.notes?.let { json.addProperty("notes", it) }
+                val blocks = JsonArray()
+                for (block in record.blocks) {
+                    val b = JsonObject()
+                    b.addProperty("repetitions", block.repetitions)
+                    block.description?.let { b.addProperty("description", it) }
+                    val steps = JsonArray()
+                    for (step in block.steps) {
+                        val s = JsonObject()
+                        s.addProperty("exerciseType", step.exerciseType)
+                        s.addProperty("exercisePhase", step.exercisePhase)
+                        step.description?.let { s.addProperty("description", it) }
+                        steps.add(s)
+                    }
+                    b.add("steps", steps)
+                    blocks.add(b)
+                }
+                json.add("blocks", blocks)
+            }
             is PowerRecord -> {
                 json.addTimeRange(record.startTime, record.endTime)
                 val samples = JsonArray()
@@ -192,6 +233,23 @@ object RecordSerializer {
             is RestingHeartRateRecord -> {
                 json.addInstant(record.time)
                 json.addProperty("beatsPerMinute", record.beatsPerMinute)
+            }
+            is SexualActivityRecord -> {
+                json.addInstant(record.time)
+                json.addProperty("protectionUsed", record.protectionUsed)
+            }
+            is SkinTemperatureRecord -> {
+                json.addTimeRange(record.startTime, record.endTime)
+                record.baseline?.let { json.addProperty("baseline", it.inCelsius) }
+                json.addProperty("measurementLocation", record.measurementLocation)
+                val deltas = JsonArray()
+                for (delta in record.deltas) {
+                    val d = JsonObject()
+                    d.addProperty("time", delta.time.toString())
+                    d.addProperty("delta", delta.delta.inCelsius)
+                    deltas.add(d)
+                }
+                json.add("deltas", deltas)
             }
             is SleepSessionRecord -> {
                 json.addTimeRange(record.startTime, record.endTime)
@@ -245,6 +303,10 @@ object RecordSerializer {
             is WeightRecord -> {
                 json.addInstant(record.time)
                 json.addProperty("weight", record.weight.inKilograms)
+            }
+            is WheelchairPushesRecord -> {
+                json.addTimeRange(record.startTime, record.endTime)
+                json.addProperty("count", record.count)
             }
             else -> {
                 // Unknown record type — skip time fields
