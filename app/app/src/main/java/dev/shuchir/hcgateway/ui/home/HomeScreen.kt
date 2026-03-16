@@ -268,20 +268,26 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxWidth().height(progressHeight),
                         amplitude = { animatedAmplitude },
                     )
-                    val showStatusText = syncingState != null && progressHeight > 8.dp
+                    val showStatusText = syncingState != null && syncingState.totalTypes > 0 && !progressDismissing && progressHeight > 8.dp
+                    var lastStatusText by remember { mutableStateOf("") }
+                    if (syncingState != null && syncingState.totalTypes > 0) {
+                        val types = "${syncingState.typesCompleted}/${syncingState.totalTypes} types"
+                        val records = syncingState.recordsSynced
+                        val currentType = syncingState.currentType
+                        lastStatusText = when {
+                            records > 0 -> "$types · $records records"
+                            currentType.isNotBlank() -> "$types · $currentType…"
+                            else -> types
+                        }
+                    }
                     val statusTextHeight by animateDpAsState(
                         targetValue = if (showStatusText) 20.dp else 0.dp,
                         animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                         label = "statusTextHeight",
                     )
-                    if (statusTextHeight > 0.dp) {
-                        val progress = "${syncingState?.typesCompleted ?: 0}/${syncingState?.totalTypes ?: 0} types"
-                        val statusText = when {
-                            (syncingState?.recordsSynced ?: 0) > 0 -> "$progress · ${syncingState?.recordsSynced} records"
-                            else -> progress
-                        }
+                    if (statusTextHeight > 0.dp && lastStatusText.isNotBlank()) {
                         Text(
-                            statusText,
+                            lastStatusText,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 8.dp).height(statusTextHeight),

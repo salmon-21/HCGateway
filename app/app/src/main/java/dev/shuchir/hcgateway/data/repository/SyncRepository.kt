@@ -13,7 +13,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.StateFlow
@@ -118,50 +118,70 @@ class SyncRepository @Inject constructor(
         val completed = AtomicInteger(0)
         val totalRecordsAtomic = AtomicInteger(0)
 
-        // Stream pages: read 1000 records at a time, serialize and upload immediately,
-        // then discard. Memory usage stays bounded regardless of total record count.
-        // Limit concurrency to 4 types to keep memory reasonable.
-        val semaphore = kotlinx.coroutines.sync.Semaphore(4)
-
+        // Pipeline: for each type, read pages into a channel while a sender coroutine
+        // uploads them in parallel. This overlaps HC API reads with API server uploads.
+        // All types run concurrently — empty types complete instantly.
         coroutineScope {
             RECORD_TYPES.map { type ->
                 async {
-                    semaphore.withPermit {
-                        try {
-                            val typeTotal = healthConnectRepository.readRecordsPaged(
-                                type.recordClass, startTime, endTime,
-                            ) { page ->
-                                val json = healthConnectRepository.recordsToJson(page)
-                                apiService.syncRecords(type.name, SyncRequest(json))
-                                val synced = totalRecordsAtomic.addAndGet(page.size)
-                                currentRecordCount = synced
-                                _syncState.value = SyncState.Syncing(
-                                    type.name, completed.get(), RECORD_TYPES.size, synced,
-                                )
-                            }
-                            if (typeTotal > 0) {
-                                android.util.Log.d("Sync", "${type.name}: $typeTotal records")
-                                synchronized(typeResults) {
-                                    typeResults.add(TypeSyncResult(type.name, typeTotal))
+                    try {
+                        val channel = kotlinx.coroutines.channels.Channel<Pair<com.google.gson.JsonElement, Int>>(1)
+                        var typeTotal = 0
+
+                        var readerError: Exception? = null
+
+                        // Producer: read pages from Health Connect
+                        val reader = launch {
+                            try {
+                                healthConnectRepository.readRecordsPaged(
+                                    type.recordClass, startTime, endTime,
+                                ) { page ->
+                                    val json = healthConnectRepository.recordsToJson(page)
+                                    typeTotal += page.size
+                                    channel.send(json to page.size)
                                 }
-                            }
-                        } catch (e: Exception) {
-                            // Skip unsupported types (SecurityException = no permission granted by HC)
-                            val isUnsupported = e is SecurityException ||
-                                e.cause is SecurityException ||
-                                e.message?.contains("SecurityException") == true
-                            if (!isUnsupported) {
-                                android.util.Log.e("Sync", "${type.name} failed: ${e.message}", e)
-                                synchronized(failedTypes) { failedTypes.add(type.name) }
-                            } else {
-                                android.util.Log.d("Sync", "${type.name}: skipped (unsupported)")
+                            } catch (e: Exception) {
+                                readerError = e
+                            } finally {
+                                channel.close()
                             }
                         }
-                        val done = completed.incrementAndGet()
-                        _syncState.value = SyncState.Syncing(
-                            type.name, done, RECORD_TYPES.size, totalRecordsAtomic.get(),
-                        )
+
+                        // Consumer: upload pages to API server
+                        for ((json, pageSize) in channel) {
+                            apiService.syncRecords(type.name, SyncRequest(json))
+                            val synced = totalRecordsAtomic.addAndGet(pageSize)
+                            currentRecordCount = synced
+                            _syncState.value = SyncState.Syncing(
+                                type.name, completed.get(), RECORD_TYPES.size, synced,
+                            )
+                        }
+
+                        reader.join()
+                        readerError?.let { throw it }
+
+                        if (typeTotal > 0) {
+                            android.util.Log.d("Sync", "${type.name}: $typeTotal records")
+                            synchronized(typeResults) {
+                                typeResults.add(TypeSyncResult(type.name, typeTotal))
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Skip unsupported types (SecurityException = no permission granted by HC)
+                        val isUnsupported = e is SecurityException ||
+                            e.cause is SecurityException ||
+                            e.message?.contains("SecurityException") == true
+                        if (!isUnsupported) {
+                            android.util.Log.e("Sync", "${type.name} failed: ${e.message}", e)
+                            synchronized(failedTypes) { failedTypes.add(type.name) }
+                        } else {
+                            android.util.Log.d("Sync", "${type.name}: skipped (unsupported)")
+                        }
                     }
+                    val done = completed.incrementAndGet()
+                    _syncState.value = SyncState.Syncing(
+                        type.name, done, RECORD_TYPES.size, totalRecordsAtomic.get(),
+                    )
                 }
             }.awaitAll()
         }
