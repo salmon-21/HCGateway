@@ -268,7 +268,26 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxWidth().height(progressHeight),
                         amplitude = { animatedAmplitude },
                     )
-                    Spacer(Modifier.height(if (progressHeight > 8.dp) 12.dp else 0.dp))
+                    val showStatusText = syncingState != null && progressHeight > 8.dp
+                    val statusTextHeight by animateDpAsState(
+                        targetValue = if (showStatusText) 20.dp else 0.dp,
+                        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                        label = "statusTextHeight",
+                    )
+                    if (statusTextHeight > 0.dp) {
+                        val progress = "${syncingState?.typesCompleted ?: 0}/${syncingState?.totalTypes ?: 0} types"
+                        val statusText = when {
+                            (syncingState?.recordsSynced ?: 0) > 0 -> "$progress · ${syncingState?.recordsSynced} records"
+                            else -> progress
+                        }
+                        Text(
+                            statusText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp).height(statusTextHeight),
+                        )
+                    }
+                    Spacer(Modifier.height(if (progressHeight > 8.dp) 4.dp else 0.dp))
                 }
 
                 // Error
