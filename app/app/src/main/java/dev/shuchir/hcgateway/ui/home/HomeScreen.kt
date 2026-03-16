@@ -265,9 +265,9 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxWidth().height(progressHeight),
                         amplitude = { amplitudeValue },
                     )
-                    val showStatusText = syncingState != null && syncingState.totalTypes > 0 && !progressDismissing && progressHeight > 8.dp
+                    val showStatusText = syncingState != null && !progressDismissing && progressHeight > 8.dp
                     var lastStatusText by remember { mutableStateOf("") }
-                    if (syncingState != null && syncingState.totalTypes > 0) {
+                    if (syncingState != null) {
                         val types = "${syncingState.typesCompleted}/${syncingState.totalTypes} types"
                         val records = syncingState.recordsSynced
                         val currentType = syncingState.currentType
