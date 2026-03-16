@@ -13,6 +13,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.concurrent.atomic.AtomicInteger
@@ -50,7 +51,11 @@ class SyncRepository @Inject constructor(
         performSync(customStartDate, customEndDate)
     }
 
+    @Volatile
+    private var cancelled = false
+
     fun cancel() {
+        cancelled = true
         syncJob?.cancel()
         syncJob = null
         _syncState.value = SyncState.Cancelled(currentRecordCount, currentTypeResults.toList())
@@ -60,7 +65,12 @@ class SyncRepository @Inject constructor(
         syncJob = job
     }
 
+    private fun updateSyncState(state: SyncState) {
+        if (!cancelled) _syncState.value = state
+    }
+
     private suspend fun performSync(customStartDate: LocalDate?, customEndDate: LocalDate?) {
+        cancelled = false
         _syncState.value = SyncState.Syncing("", 0, RECORD_TYPES.size)
         currentTypeResults = mutableListOf()
         currentRecordCount = 0
@@ -123,7 +133,7 @@ class SyncRepository @Inject constructor(
         // All types run concurrently — empty types complete instantly.
         coroutineScope {
             RECORD_TYPES.map { type ->
-                async {
+                async(kotlinx.coroutines.Dispatchers.IO) {
                     try {
                         val channel = kotlinx.coroutines.channels.Channel<Pair<com.google.gson.JsonElement, Int>>(1)
                         var typeTotal = 0
@@ -136,10 +146,13 @@ class SyncRepository @Inject constructor(
                                 healthConnectRepository.readRecordsPaged(
                                     type.recordClass, startTime, endTime,
                                 ) { page ->
+                                    coroutineContext.ensureActive()
                                     val json = healthConnectRepository.recordsToJson(page)
                                     typeTotal += page.size
                                     channel.send(json to page.size)
                                 }
+                            } catch (e: CancellationException) {
+                                throw e
                             } catch (e: Exception) {
                                 readerError = e
                             } finally {
@@ -149,12 +162,13 @@ class SyncRepository @Inject constructor(
 
                         // Consumer: upload pages to API server
                         for ((json, pageSize) in channel) {
+                            coroutineContext.ensureActive()
                             apiService.syncRecords(type.name, SyncRequest(json))
                             val synced = totalRecordsAtomic.addAndGet(pageSize)
                             currentRecordCount = synced
-                            _syncState.value = SyncState.Syncing(
+                            updateSyncState(SyncState.Syncing(
                                 type.name, completed.get(), RECORD_TYPES.size, synced,
-                            )
+                            ))
                         }
 
                         reader.join()
@@ -179,9 +193,9 @@ class SyncRepository @Inject constructor(
                         }
                     }
                     val done = completed.incrementAndGet()
-                    _syncState.value = SyncState.Syncing(
+                    updateSyncState(SyncState.Syncing(
                         type.name, done, RECORD_TYPES.size, totalRecordsAtomic.get(),
-                    )
+                    ))
                 }
             }.awaitAll()
         }
@@ -230,9 +244,9 @@ class SyncRepository @Inject constructor(
                         }
                     }
                     val done = completed.incrementAndGet()
-                    _syncState.value = SyncState.Syncing(
+                    updateSyncState(SyncState.Syncing(
                         typeName, done, totalTypes, totalRecordsAtomic.get(),
-                    )
+                    ))
                 }
             }.awaitAll()
         }
