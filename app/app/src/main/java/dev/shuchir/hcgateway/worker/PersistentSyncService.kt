@@ -72,14 +72,13 @@ class PersistentSyncService : Service() {
     private var syncTimerJob: kotlinx.coroutines.Job? = null
 
     private fun startInAppSyncTimer() {
-        // Start initial timer, then watch for settings changes
+        // In-app timer for sub-15min intervals only (WorkManager minimum is 15min)
         scope.launch {
             val initial = preferencesRepository.settings.first()
             var lastInterval = initial.syncInterval
             var lastAutoSync = initial.autoSyncEnabled
 
-            // Start initial timer
-            if (initial.autoSyncEnabled) {
+            if (initial.autoSyncEnabled && initial.syncInterval < 15) {
                 syncTimerJob = scope.launch {
                     while (true) {
                         kotlinx.coroutines.delay(initial.syncInterval * 60_000L)
@@ -91,13 +90,12 @@ class PersistentSyncService : Service() {
                 }
             }
 
-            // Watch for changes only
             preferencesRepository.settings.collect { settings ->
                 if (settings.syncInterval != lastInterval || settings.autoSyncEnabled != lastAutoSync) {
                     lastInterval = settings.syncInterval
                     lastAutoSync = settings.autoSyncEnabled
                     syncTimerJob?.cancel()
-                    if (settings.autoSyncEnabled) {
+                    if (settings.autoSyncEnabled && settings.syncInterval < 15) {
                         syncTimerJob = scope.launch {
                             while (true) {
                                 kotlinx.coroutines.delay(settings.syncInterval * 60_000L)

@@ -193,6 +193,12 @@ fun HomeScreen(
                             } else {
                                 lastFailedTypes = emptyList()
                             }
+                            // If state is stale (e.g. returning from background), skip animation
+                            val age = System.currentTimeMillis() - done.timestamp
+                            if (age > 2000) {
+                                viewModel.resetSyncState()
+                                return@LaunchedEffect
+                            }
                             // Phase 1: wait for wavy→straight morph
                             kotlinx.coroutines.delay(600)
                             // Phase 2: start shrinking progress bar
@@ -205,6 +211,12 @@ fun HomeScreen(
                             viewModel.resetSyncState()
                         }
                         is SyncState.Cancelled -> {
+                            val cancelled = syncState as SyncState.Cancelled
+                            val age = System.currentTimeMillis() - cancelled.timestamp
+                            if (age > 2000) {
+                                viewModel.resetSyncState()
+                                return@LaunchedEffect
+                            }
                             kotlinx.coroutines.delay(600)
                             progressDismissing = true
                             kotlinx.coroutines.delay(400)

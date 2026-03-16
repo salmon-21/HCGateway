@@ -8,8 +8,13 @@ sealed class SyncState {
         val recordCount: Int,
         val typeResults: List<TypeSyncResult> = emptyList(),
         val failedTypes: List<String> = emptyList(),
+        val timestamp: Long = System.currentTimeMillis(),
     ) : SyncState()
-    data class Cancelled(val recordCount: Int, val typeResults: List<TypeSyncResult> = emptyList()) : SyncState()
+    data class Cancelled(
+        val recordCount: Int,
+        val typeResults: List<TypeSyncResult> = emptyList(),
+        val timestamp: Long = System.currentTimeMillis(),
+    ) : SyncState()
 }
 
 data class TypeSyncResult(
