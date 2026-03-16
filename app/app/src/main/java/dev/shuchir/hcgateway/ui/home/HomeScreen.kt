@@ -252,7 +252,7 @@ fun HomeScreen(
                     label = "syncProgress",
                 )
                 val targetAmplitude = if (isDone || !showProgress) 0f else 1f
-                val animatedAmplitude by animateFloatAsState(
+                val amplitudeValue by animateFloatAsState(
                     targetValue = targetAmplitude,
                     animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
                     label = "syncAmplitude",
@@ -266,7 +266,7 @@ fun HomeScreen(
                     LinearWavyProgressIndicator(
                         progress = { animatedProgress },
                         modifier = Modifier.fillMaxWidth().height(progressHeight),
-                        amplitude = { animatedAmplitude },
+                        amplitude = { amplitudeValue },
                     )
                     val showStatusText = syncingState != null && syncingState.totalTypes > 0 && !progressDismissing && progressHeight > 8.dp
                     var lastStatusText by remember { mutableStateOf("") }
