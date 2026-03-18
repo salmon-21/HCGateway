@@ -74,6 +74,9 @@ app/app/src/main/java/dev/shuchir/hcgateway/
 - **Samsung Health** writes to Health Connect in ~1 hour batches, not real-time.
 - **Process recreation**: Android may kill the app process in background. ViewModels reset, `_serverCounts` becomes null. Don't assume in-memory state persists.
 - **`LinearWavyProgressIndicator` amplitude**: The M3 component applies its own internal spring animation to amplitude changes, making external dynamic values unresponsive. Use fixed values.
+- **APK not reflected after build**: `./gradlew installDebug` may use cached artifacts. Run `./gradlew clean installDebug` when code changes don't take effect.
+- **logcat process ID changes**: After reinstall or process recreation, the PID changes. Always check the PID in logcat output matches the current app process.
+- **Adding a new record type** requires 4 files: `RecordTypes.kt` (type info), `RecordSerializer.kt` (serialization), `AndroidManifest.xml` (READ/WRITE permissions), and `HealthConnectRepository.kt` (getChangesToken filter if experimental).
 
 ## Conventions
 
