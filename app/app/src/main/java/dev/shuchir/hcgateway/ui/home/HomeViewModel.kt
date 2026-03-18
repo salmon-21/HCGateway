@@ -208,17 +208,14 @@ class HomeViewModel @Inject constructor(
         checkPermissions()
     }
 
-    fun syncNow() {
-        val job = viewModelScope.launch {
-            syncRepository.sync()
-        }
-        syncRepository.setSyncJob(job)
+    fun syncNow() = launchSync { syncRepository.sync() }
+
+    fun syncRange(startDate: LocalDate, endDate: LocalDate) = launchSync {
+        syncRepository.sync(startDate, endDate)
     }
 
-    fun syncRange(startDate: LocalDate, endDate: LocalDate) {
-        val job = viewModelScope.launch {
-            syncRepository.sync(startDate, endDate)
-        }
+    private fun launchSync(block: suspend () -> Unit) {
+        val job = viewModelScope.launch { block() }
         syncRepository.setSyncJob(job)
     }
 

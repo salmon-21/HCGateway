@@ -68,21 +68,10 @@ class HealthConnectRepository @Inject constructor(
         startTime: Instant,
         endTime: Instant,
     ): List<Record> {
-        val client = healthConnectClient ?: return emptyList()
         val allRecords = mutableListOf<Record>()
-        var pageToken: String? = null
-
-        do {
-            val request = ReadRecordsRequest(
-                recordType = recordClass,
-                timeRangeFilter = TimeRangeFilter.between(startTime, endTime),
-                pageToken = pageToken,
-            )
-            val response = client.readRecords(request)
-            allRecords.addAll(response.records)
-            pageToken = response.pageToken
-        } while (pageToken != null)
-
+        readRecordsPaged(recordClass, startTime, endTime) { page ->
+            allRecords.addAll(page)
+        }
         return allRecords
     }
 

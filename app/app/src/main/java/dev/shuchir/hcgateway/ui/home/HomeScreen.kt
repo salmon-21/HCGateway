@@ -185,45 +185,30 @@ fun HomeScreen(
                 // Auto-dismiss Done/Cancelled: wait for amplitude morph, then shrink, then reset
                 var progressDismissing by remember { mutableStateOf(false) }
                 LaunchedEffect(syncState) {
+                    suspend fun dismissProgress(timestamp: Long, consumeChanges: Boolean = false) {
+                        val age = System.currentTimeMillis() - timestamp
+                        if (age > 2000) {
+                            viewModel.resetSyncState()
+                            return
+                        }
+                        kotlinx.coroutines.delay(600)
+                        progressDismissing = true
+                        kotlinx.coroutines.delay(400)
+                        progressDismissing = false
+                        viewModel.loadServerCounts()
+                        viewModel.loadPendingCounts(consumeChanges = consumeChanges)
+                        viewModel.resetSyncState()
+                    }
+
                     when (syncState) {
                         is SyncState.Done -> {
                             val done = syncState as SyncState.Done
-                            if (done.failedTypes.isNotEmpty()) {
-                                lastFailedTypes = done.failedTypes
-                            } else {
-                                lastFailedTypes = emptyList()
-                            }
-                            // If state is stale (e.g. returning from background), skip animation
-                            val age = System.currentTimeMillis() - done.timestamp
-                            if (age > 2000) {
-                                viewModel.resetSyncState()
-                                return@LaunchedEffect
-                            }
-                            // Phase 1: wait for wavy→straight morph
-                            kotlinx.coroutines.delay(600)
-                            // Phase 2: start shrinking progress bar
-                            progressDismissing = true
-                            kotlinx.coroutines.delay(400)
-                            // Phase 3: reset
-                            progressDismissing = false
-                            viewModel.loadServerCounts()
-                            viewModel.loadPendingCounts(consumeChanges = syncSource == 1)
-                            viewModel.resetSyncState()
+                            lastFailedTypes = done.failedTypes.ifEmpty { emptyList() }
+                            dismissProgress(done.timestamp, consumeChanges = syncSource == 1)
                         }
                         is SyncState.Cancelled -> {
                             val cancelled = syncState as SyncState.Cancelled
-                            val age = System.currentTimeMillis() - cancelled.timestamp
-                            if (age > 2000) {
-                                viewModel.resetSyncState()
-                                return@LaunchedEffect
-                            }
-                            kotlinx.coroutines.delay(600)
-                            progressDismissing = true
-                            kotlinx.coroutines.delay(400)
-                            progressDismissing = false
-                            viewModel.loadServerCounts()
-                            viewModel.loadPendingCounts()
-                            viewModel.resetSyncState()
+                            dismissProgress(cancelled.timestamp)
                         }
                         else -> {}
                     }
