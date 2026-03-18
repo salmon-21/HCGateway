@@ -114,6 +114,7 @@ class PersistentSyncService : Service() {
 
     private fun observeSyncState() {
         scope.launch {
+            var lastNotifyTime = 0L
             syncRepository.syncState.collect { state ->
                 val manager = getSystemService(NotificationManager::class.java)
                 when (state) {
@@ -122,6 +123,10 @@ class PersistentSyncService : Service() {
                         manager.notify(NOTIFICATION_ID, buildPersistentNotification(nextSyncText))
                     }
                     is SyncState.Syncing -> {
+                        // Throttle notification updates to at most once per second
+                        val now = System.currentTimeMillis()
+                        if (now - lastNotifyTime < 1000) return@collect
+                        lastNotifyTime = now
                         val text = when {
                             state.recordsSynced > 0 -> "${state.typesCompleted}/${state.totalTypes} types · ${state.recordsSynced} records"
                             state.typesCompleted > 0 -> "${state.typesCompleted}/${state.totalTypes} types"
