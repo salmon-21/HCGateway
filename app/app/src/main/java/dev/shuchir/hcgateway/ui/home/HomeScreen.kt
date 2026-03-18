@@ -207,7 +207,7 @@ fun HomeScreen(
                             // Phase 3: reset
                             progressDismissing = false
                             viewModel.loadServerCounts()
-                            viewModel.loadPendingCounts(consumeChanges = true)
+                            viewModel.loadPendingCounts(consumeChanges = syncSource == 1)
                             viewModel.resetSyncState()
                         }
                         is SyncState.Cancelled -> {
