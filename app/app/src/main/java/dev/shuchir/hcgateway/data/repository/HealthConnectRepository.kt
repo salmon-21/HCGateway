@@ -124,9 +124,14 @@ class HealthConnectRepository @Inject constructor(
 
     suspend fun getChangesToken(): String {
         val client = healthConnectClient ?: throw IllegalStateException("Health Connect not available")
-        val request = ChangesTokenRequest(
-            recordTypes = RECORD_TYPES.map { it.recordClass }.toSet(),
-        )
+        // Only request changes for record types that Health Connect supports on this device.
+        // Unsupported types (e.g. MindfulnessSession) cause SecurityException.
+        val granted = client.permissionController.getGrantedPermissions()
+        val supportedTypes = RECORD_TYPES.filter { type ->
+            val perm = HealthPermission.getReadPermission(type.recordClass)
+            perm in granted
+        }.map { it.recordClass }.toSet()
+        val request = ChangesTokenRequest(recordTypes = supportedTypes)
         return client.getChangesToken(request)
     }
 
