@@ -35,6 +35,7 @@ class SyncRepository @Inject constructor(
 ) {
     companion object {
         const val MIN_SYNC_DISPLAY_MS = 1000L
+        private const val DEFAULT_LOOKBACK_DAYS = 29L
     }
 
     private val _syncState = MutableStateFlow<SyncState>(SyncState.Idle)
@@ -42,7 +43,7 @@ class SyncRepository @Inject constructor(
 
     private var syncJob: Job? = null
     private var currentTypeResults = mutableListOf<TypeSyncResult>()
-    private var currentRecordCount = 0
+    @Volatile private var currentRecordCount = 0
 
     val isSyncing: Boolean get() = syncJob?.isActive == true
 
@@ -88,12 +89,12 @@ class SyncRepository @Inject constructor(
                     .atStartOfDay(ZoneId.of("UTC")).toInstant()
                 totalRecords = fullSync(startTime, endTime, typeResults, failedTypes)
             } else if (settings.fullSyncMode) {
-                val startTime = Instant.now().minusSeconds(29 * 24 * 60 * 60L)
+                val startTime = Instant.now().minus(java.time.Duration.ofDays(DEFAULT_LOOKBACK_DAYS))
                 totalRecords = fullSync(startTime, Instant.now(), typeResults, failedTypes)
             } else if (settings.changesToken.isNotBlank()) {
                 totalRecords = deltaSync(settings.changesToken, typeResults, failedTypes)
             } else {
-                val startTime = Instant.now().minusSeconds(29 * 24 * 60 * 60L)
+                val startTime = Instant.now().minus(java.time.Duration.ofDays(DEFAULT_LOOKBACK_DAYS))
                 totalRecords = fullSync(startTime, Instant.now(), typeResults, failedTypes)
             }
 
@@ -219,7 +220,7 @@ class SyncRepository @Inject constructor(
 
         if (result.tokenExpired) {
             preferencesRepository.updateChangesToken("")
-            val startTime = Instant.now().minusSeconds(29 * 24 * 60 * 60L)
+            val startTime = Instant.now().minus(java.time.Duration.ofDays(DEFAULT_LOOKBACK_DAYS))
             return fullSync(startTime, Instant.now(), typeResults, failedTypes)
         }
 
