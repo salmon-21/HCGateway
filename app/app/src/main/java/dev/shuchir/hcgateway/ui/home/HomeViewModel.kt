@@ -183,7 +183,6 @@ class HomeViewModel @Inject constructor(
     }
 
     suspend fun refreshTable() {
-        // Null out to show LoadingIndicator, then fetch both and wait for completion
         _serverCounts.value = null
         loadPendingCounts()
         // Fetch server counts synchronously so we wait for the result

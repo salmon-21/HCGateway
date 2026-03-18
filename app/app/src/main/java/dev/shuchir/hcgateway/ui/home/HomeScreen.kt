@@ -519,14 +519,7 @@ private fun DataOverviewTable(
     val allTypes = (pendingCounts.keys + serverCounts.keys).distinct()
         .sortedByDescending { serverCounts[it] ?: 0 }
 
-    if (allTypes.isEmpty()) {
-        Text(
-            "No data yet",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        return
-    }
+    if (allTypes.isEmpty()) return
 
     // Header
     Row(
