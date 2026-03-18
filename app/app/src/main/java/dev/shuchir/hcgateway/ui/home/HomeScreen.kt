@@ -207,7 +207,7 @@ fun HomeScreen(
                             // Phase 3: reset
                             progressDismissing = false
                             viewModel.loadServerCounts()
-                            viewModel.loadPendingCounts()
+                            viewModel.loadPendingCounts(consumeChanges = true)
                             viewModel.resetSyncState()
                         }
                         is SyncState.Cancelled -> {
@@ -471,8 +471,9 @@ fun HomeScreen(
         val datePickerState = rememberDateRangePickerState(
             selectableDates = object : SelectableDates {
                 override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                    val endOfToday = System.currentTimeMillis() + 24 * 60 * 60 * 1000L
-                    return utcTimeMillis <= endOfToday
+                    val startOfTomorrow = java.time.LocalDate.now().plusDays(1)
+                        .atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+                    return utcTimeMillis < startOfTomorrow
                 }
             }
         )
