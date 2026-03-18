@@ -132,11 +132,10 @@ class HomeViewModel @Inject constructor(
     private val _pendingCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
     val pendingCounts: StateFlow<Map<String, Int>> = _pendingCounts.asStateFlow()
 
-    fun loadPendingCounts() {
+    fun loadPendingCounts(consumeChanges: Boolean = false) {
         viewModelScope.launch {
             val settings = preferencesRepository.settings.first()
             if (settings.changesToken.isBlank()) {
-                // No token = never synced, can't determine pending
                 _pendingCounts.value = emptyMap()
                 return@launch
             }
@@ -146,7 +145,14 @@ class HomeViewModel @Inject constructor(
                     _pendingCounts.value = emptyMap()
                     return@launch
                 }
-                _pendingCounts.value = result.upsertedRecords.mapValues { it.value.size }
+                if (consumeChanges && result.nextToken.isNotBlank()) {
+                    // After sync completion, advance the token so these changes
+                    // don't appear as New. They were already uploaded by the sync.
+                    preferencesRepository.updateChangesToken(result.nextToken)
+                    _pendingCounts.value = emptyMap()
+                } else {
+                    _pendingCounts.value = result.upsertedRecords.mapValues { it.value.size }
+                }
             } catch (_: Exception) {
                 _pendingCounts.value = emptyMap()
             }
