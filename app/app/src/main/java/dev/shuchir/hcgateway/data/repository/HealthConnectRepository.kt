@@ -160,6 +160,12 @@ class HealthConnectRepository @Inject constructor(
             if (e.message?.contains("token", ignoreCase = true) == true) {
                 return ChangeResult(emptyMap(), "", false, tokenExpired = true)
             }
+            // Some records in Health Connect may have invalid data (e.g. startTime >= endTime).
+            // Return what we have so far rather than failing the entire sync.
+            if (e is IllegalArgumentException) {
+                android.util.Log.w("HealthConnect", "Skipping corrupt record in changes: ${e.message}")
+                return ChangeResult(upserted, currentToken, false, tokenExpired = false)
+            }
             throw e
         }
 
