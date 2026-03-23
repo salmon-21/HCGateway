@@ -16,6 +16,7 @@ class BootReceiver : BroadcastReceiver() {
 
     @Inject lateinit var preferencesRepository: PreferencesRepository
     @Inject lateinit var syncScheduler: SyncScheduler
+    @Inject lateinit var syncNotificationManager: SyncNotificationManager
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
@@ -28,7 +29,7 @@ class BootReceiver : BroadcastReceiver() {
                     if (settings.autoSyncEnabled) {
                         syncScheduler.schedule(settings.syncInterval)
                     }
-                    PersistentSyncService.start(context)
+                    syncNotificationManager.start()
                 }
             } finally {
                 pendingResult.finish()
