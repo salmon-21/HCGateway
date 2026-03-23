@@ -5,7 +5,7 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
 import dev.shuchir.hcgateway.data.local.PreferencesRepository
-import dev.shuchir.hcgateway.worker.PersistentSyncService
+import dev.shuchir.hcgateway.worker.SyncNotificationManager
 import io.sentry.android.core.SentryAndroid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,12 +18,13 @@ class HCGatewayApp : Application(), Configuration.Provider {
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var preferencesRepository: PreferencesRepository
+    @Inject lateinit var syncNotificationManager: SyncNotificationManager
 
     override fun onCreate() {
         super.onCreate()
         initSentry()
         initThemeMode()
-        startServiceIfLoggedIn()
+        startNotificationIfLoggedIn()
     }
 
     private fun initThemeMode() {
@@ -48,11 +49,11 @@ class HCGatewayApp : Application(), Configuration.Provider {
         }
     }
 
-    private fun startServiceIfLoggedIn() {
+    private fun startNotificationIfLoggedIn() {
         CoroutineScope(Dispatchers.IO).launch {
             val settings = preferencesRepository.settings.first()
             if (settings.token.isNotBlank()) {
-                PersistentSyncService.start(this@HCGatewayApp)
+                syncNotificationManager.start()
             }
         }
     }

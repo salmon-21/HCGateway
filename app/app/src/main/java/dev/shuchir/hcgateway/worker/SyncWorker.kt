@@ -14,7 +14,6 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dev.shuchir.hcgateway.R
 import dev.shuchir.hcgateway.data.repository.SyncRepository
-import dev.shuchir.hcgateway.domain.model.SyncState
 import kotlinx.coroutines.flow.first
 
 @HiltWorker
@@ -28,7 +27,6 @@ class SyncWorker @AssistedInject constructor(
     companion object {
         const val CHANNEL_ID = "hcgateway_sync"
         const val NOTIFICATION_ID = 1
-        const val RESULT_NOTIFICATION_ID = 2
     }
 
     override suspend fun doWork(): Result {
@@ -49,16 +47,9 @@ class SyncWorker @AssistedInject constructor(
 
         return try {
             syncRepository.sync()
-
-            when (val finalState = syncRepository.syncState.value) {
-                is SyncState.Done -> showResultNotification("Sync complete", "${finalState.recordCount} records synced")
-                is SyncState.Error -> showResultNotification("Sync failed", finalState.message)
-                else -> {}
-            }
-
+            // Result notification is handled by SyncNotificationManager observing SyncState
             Result.success()
         } catch (e: Exception) {
-            showResultNotification("Sync failed", e.message ?: "Unknown error")
             Result.retry()
         }
     }
@@ -77,18 +68,6 @@ class SyncWorker @AssistedInject constructor(
         } else {
             ForegroundInfo(NOTIFICATION_ID, notification)
         }
-    }
-
-    private fun showResultNotification(title: String, text: String) {
-        val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setAutoCancel(true)
-            .build()
-
-        val manager = applicationContext.getSystemService(NotificationManager::class.java)
-        manager.notify(RESULT_NOTIFICATION_ID, notification)
     }
 
     private fun createNotificationChannel() {

@@ -123,10 +123,13 @@
             </intent-filter>
         </activity-alias>
 
-        <service
-            android:name=".worker.PersistentSyncService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
+        <receiver
+            android:name=".worker.CancelSyncReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="dev.shuchir.hcgateway.CANCEL_SYNC" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".fcm.HCGatewayFirebaseService"
