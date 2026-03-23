@@ -24,34 +24,40 @@ class SyncWorker @AssistedInject constructor(
     private val preferencesRepository: dev.shuchir.hcgateway.data.local.PreferencesRepository,
 ) : CoroutineWorker(appContext, workerParams) {
 
-    companion object {
-        const val CHANNEL_ID = "hcgateway_sync"
-        const val NOTIFICATION_ID = 1
-    }
-
     override suspend fun doWork(): Result {
         // Skip if last sync was too recent (prevents duplicate sync on foreground resume)
         val settings = preferencesRepository.settings.first()
         if (settings.lastSync > 0) {
             val elapsed = System.currentTimeMillis() - settings.lastSync
             val minInterval = settings.syncInterval * 60_000L * 3 / 4 // 75% of interval
-            if (elapsed < minInterval) return Result.success()
+            if (elapsed < minInterval) {
+                android.util.Log.d(TAG, "Skipped: ${elapsed / 1000}s since last sync (min ${minInterval / 1000}s)")
+                return Result.success()
+            }
         }
 
+        android.util.Log.d(TAG, "Starting sync (interval=${settings.syncInterval}min)")
         createNotificationChannel()
         try {
             setForeground(createProgressInfo("Syncing health data..."))
-        } catch (_: Exception) {
-            // Foreground may fail if another foreground service is running
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "Failed to set foreground: ${e.message}")
         }
 
         return try {
             syncRepository.sync()
-            // Result notification is handled by SyncNotificationManager observing SyncState
+            android.util.Log.d(TAG, "Sync completed")
             Result.success()
         } catch (e: Exception) {
+            android.util.Log.e(TAG, "Sync failed: ${e.message}")
             Result.retry()
         }
+    }
+
+    companion object {
+        private const val TAG = "SyncWorker"
+        const val CHANNEL_ID = "hcgateway_sync"
+        const val NOTIFICATION_ID = 1
     }
 
     private fun createProgressInfo(text: String): ForegroundInfo {
