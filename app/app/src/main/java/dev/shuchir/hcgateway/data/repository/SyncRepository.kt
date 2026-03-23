@@ -34,6 +34,7 @@ class SyncRepository @Inject constructor(
     private val gson: Gson,
 ) {
     companion object {
+        private const val TAG = "Sync"
         const val MIN_SYNC_DISPLAY_MS = 1000L
         private const val DEFAULT_LOOKBACK_DAYS = 29L
     }
@@ -84,16 +85,20 @@ class SyncRepository @Inject constructor(
             val settings = preferencesRepository.settings.first()
 
             if (customStartDate != null) {
+                android.util.Log.d(TAG, "Force sync: $customStartDate → ${customEndDate ?: LocalDate.now()}")
                 val startTime = customStartDate.atStartOfDay(ZoneId.of("UTC")).toInstant()
                 val endTime = (customEndDate ?: LocalDate.now()).plusDays(1)
                     .atStartOfDay(ZoneId.of("UTC")).toInstant()
                 totalRecords = fullSync(startTime, endTime, typeResults, failedTypes)
             } else if (settings.fullSyncMode) {
+                android.util.Log.d(TAG, "Full sync (${DEFAULT_LOOKBACK_DAYS}d lookback)")
                 val startTime = Instant.now().minus(java.time.Duration.ofDays(DEFAULT_LOOKBACK_DAYS))
                 totalRecords = fullSync(startTime, Instant.now(), typeResults, failedTypes)
             } else if (settings.changesToken.isNotBlank()) {
+                android.util.Log.d(TAG, "Delta sync")
                 totalRecords = deltaSync(settings.changesToken, typeResults, failedTypes)
             } else {
+                android.util.Log.d(TAG, "Initial full sync (no changes token)")
                 val startTime = Instant.now().minus(java.time.Duration.ofDays(DEFAULT_LOOKBACK_DAYS))
                 totalRecords = fullSync(startTime, Instant.now(), typeResults, failedTypes)
             }
@@ -108,14 +113,17 @@ class SyncRepository @Inject constructor(
             if (typeResults.isNotEmpty()) {
                 preferencesRepository.updateLastSyncResults(gson.toJson(typeResults))
             }
+            val totalElapsed = System.currentTimeMillis() - syncStartTime
+            android.util.Log.d(TAG, "Sync done: $totalRecords records in ${totalElapsed}ms, ${failedTypes.size} failed")
             _syncState.value = SyncState.Done(totalRecords, typeResults, failedTypes)
         } catch (e: CancellationException) {
-            // Cancelled state is set by cancel(), just save partial results
+            android.util.Log.d(TAG, "Sync cancelled")
             if (typeResults.isNotEmpty()) {
                 preferencesRepository.updateLastSyncResults(gson.toJson(typeResults))
             }
             throw e
         } catch (e: Exception) {
+            android.util.Log.e(TAG, "Sync error: ${e.message}")
             _syncState.value = SyncState.Error(e.message ?: "Sync failed")
         }
     }
@@ -176,7 +184,7 @@ class SyncRepository @Inject constructor(
                         readerError?.let { throw it }
 
                         if (typeTotal > 0) {
-                            android.util.Log.d("Sync", "${type.name}: $typeTotal records")
+                            android.util.Log.d(TAG, "${type.name}: $typeTotal records")
                             synchronized(typeResults) {
                                 typeResults.add(TypeSyncResult(type.name, typeTotal))
                             }
@@ -187,10 +195,10 @@ class SyncRepository @Inject constructor(
                             e.cause is SecurityException ||
                             e.message?.contains("SecurityException") == true
                         if (!isUnsupported) {
-                            android.util.Log.e("Sync", "${type.name} failed: ${e.message}", e)
+                            android.util.Log.e(TAG, "${type.name} failed: ${e.message}", e)
                             synchronized(failedTypes) { failedTypes.add(type.name) }
                         } else {
-                            android.util.Log.d("Sync", "${type.name}: skipped (unsupported)")
+                            android.util.Log.d(TAG, "${type.name}: skipped (unsupported)")
                         }
                     }
                     val done = completed.incrementAndGet()
@@ -204,7 +212,10 @@ class SyncRepository @Inject constructor(
         try {
             val token = healthConnectRepository.getChangesToken()
             preferencesRepository.updateChangesToken(token)
-        } catch (_: Exception) { }
+            android.util.Log.d(TAG, "Changes token saved")
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Failed to save changes token: ${e.message}")
+        }
 
         return totalRecordsAtomic.get()
     }
