@@ -33,7 +33,7 @@ import dev.shuchir.hcgateway.ui.onboarding.PermissionOnboardingScreen
 import dev.shuchir.hcgateway.ui.settings.LicensesScreen
 import dev.shuchir.hcgateway.ui.settings.SettingsScreen
 import dev.shuchir.hcgateway.ui.theme.HCGatewayTheme
-import dev.shuchir.hcgateway.worker.PersistentSyncService
+import dev.shuchir.hcgateway.worker.SyncNotificationManager
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -45,6 +45,7 @@ enum class AuthState { Loading, Onboarding, LoggedOut, LoggedIn }
 @HiltViewModel
 class NavViewModel @Inject constructor(
     preferencesRepository: PreferencesRepository,
+    val syncNotificationManager: SyncNotificationManager,
 ) : ViewModel() {
 
     val authState: StateFlow<AuthState> = combine(
@@ -67,17 +68,11 @@ fun NavGraph(
     val authState by viewModel.authState.collectAsState()
     val context = LocalContext.current
 
-    // Start/stop persistent service based on auth state
+    // Start/stop notification based on auth state
     LaunchedEffect(authState) {
         when (authState) {
-            AuthState.LoggedIn -> {
-                try {
-                    PersistentSyncService.start(context)
-                } catch (e: Exception) {
-                    android.util.Log.e("NavGraph", "Failed to start service", e)
-                }
-            }
-            AuthState.LoggedOut -> PersistentSyncService.stop(context)
+            AuthState.LoggedIn -> viewModel.syncNotificationManager.start()
+            AuthState.LoggedOut -> viewModel.syncNotificationManager.dismiss()
             else -> {}
         }
     }
