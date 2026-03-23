@@ -66,7 +66,7 @@ app/app/src/main/java/dev/shuchir/hcgateway/
 - **deltaSync**: Uses Changes API token to sync only modified records since last sync.
 - **Cancel**: `@Volatile cancelled` flag prevents async coroutines from overwriting Cancelled state. `ensureActive()` checks in reader/consumer loops.
 - **Force Sync**: Date range picker, consumes Changes API token on completion to clear New counts.
-- **WorkManager**: Periodic sync with 75% interval guard to prevent duplicate sync on foreground resume.
+- **WorkManager**: Periodic sync with 75% interval guard to prevent duplicate sync on foreground resume. Minimum interval is 15 minutes (WorkManager constraint). No foreground service for idle notification — `SyncNotificationManager` uses `NotificationManager.notify()` directly to avoid Android 15's 6-hour `dataSync` foreground service limit.
 
 ## Gotchas
 
