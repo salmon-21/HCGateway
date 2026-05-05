@@ -74,8 +74,6 @@ class SyncRepository @Inject constructor(
     private suspend fun performSync(customStartDate: LocalDate?, customEndDate: LocalDate?) {
         cancelled = false
 
-        // Skip silently if Health Connect permissions are missing — the home screen
-        // already prompts the user to grant permissions, no need to surface a sync error.
         if (!healthConnectRepository.hasAllPermissions()) {
             Timber.i("Sync skipped: Health Connect permissions not granted")
             _syncState.value = SyncState.Idle

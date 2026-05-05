@@ -16,6 +16,7 @@ import dev.shuchir.hcgateway.data.repository.SyncRepository
 import dev.shuchir.hcgateway.domain.model.SyncState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -24,7 +25,6 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import dagger.hilt.android.qualifiers.ApplicationContext
-import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -46,55 +46,57 @@ class SyncNotificationManager @Inject constructor(
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val manager get() = context.getSystemService(NotificationManager::class.java)
 
+    @Volatile private var started = false
+    private var observerJob: Job? = null
+
     fun start() {
-        Timber.i("start()")
+        if (started) return
+        started = true
         createNotificationChannels()
-        observeSyncState()
+        observerJob = observeSyncState()
         scope.launch {
             val text = getNextSyncText()
             manager.notify(NOTIFICATION_ID, buildNotification(text))
         }
     }
 
-    private fun observeSyncState() {
-        scope.launch {
-            var lastNotifyTime = 0L
-            syncRepository.syncState.collect { state ->
-                when (state) {
-                    is SyncState.Idle -> {
-                        val text = getNextSyncText()
-                        manager.notify(NOTIFICATION_ID, buildNotification(text))
+    private fun observeSyncState(): Job = scope.launch {
+        var lastNotifyTime = 0L
+        syncRepository.syncState.collect { state ->
+            when (state) {
+                is SyncState.Idle -> {
+                    val text = getNextSyncText()
+                    manager.notify(NOTIFICATION_ID, buildNotification(text))
+                }
+                is SyncState.Syncing -> {
+                    val now = System.currentTimeMillis()
+                    if (now - lastNotifyTime < 1000) return@collect
+                    lastNotifyTime = now
+                    val text = when {
+                        state.recordsSynced > 0 -> "${state.typesCompleted}/${state.totalTypes} types · ${state.recordsSynced} records"
+                        state.typesCompleted > 0 -> "${state.typesCompleted}/${state.totalTypes} types"
+                        else -> "Starting..."
                     }
-                    is SyncState.Syncing -> {
-                        val now = System.currentTimeMillis()
-                        if (now - lastNotifyTime < 1000) return@collect
-                        lastNotifyTime = now
-                        val text = when {
-                            state.recordsSynced > 0 -> "${state.typesCompleted}/${state.totalTypes} types · ${state.recordsSynced} records"
-                            state.typesCompleted > 0 -> "${state.typesCompleted}/${state.totalTypes} types"
-                            else -> "Starting..."
-                        }
-                        manager.notify(NOTIFICATION_ID, buildNotification(text, state.typesCompleted, state.totalTypes, showCancel = true))
+                    manager.notify(NOTIFICATION_ID, buildNotification(text, state.typesCompleted, state.totalTypes, showCancel = true))
+                }
+                is SyncState.Done -> {
+                    val nextText = getNextSyncText()
+                    manager.notify(NOTIFICATION_ID, buildNotification(nextText))
+                    val resultText = if (state.failedTypes.isNotEmpty()) {
+                        "${state.recordCount} records, ${state.failedTypes.size} failed"
+                    } else {
+                        "${state.recordCount} records"
                     }
-                    is SyncState.Done -> {
-                        val nextText = getNextSyncText()
-                        manager.notify(NOTIFICATION_ID, buildNotification(nextText))
-                        val resultText = if (state.failedTypes.isNotEmpty()) {
-                            "${state.recordCount} records, ${state.failedTypes.size} failed"
-                        } else {
-                            "${state.recordCount} records"
-                        }
-                        showResultNotification("Done", resultText)
-                    }
-                    is SyncState.Error -> {
-                        val nextText = getNextSyncText()
-                        manager.notify(NOTIFICATION_ID, buildNotification(nextText))
-                        showResultNotification("Failed", state.message)
-                    }
-                    is SyncState.Cancelled -> {
-                        val nextText = getNextSyncText()
-                        manager.notify(NOTIFICATION_ID, buildNotification(nextText))
-                    }
+                    showResultNotification("Done", resultText)
+                }
+                is SyncState.Error -> {
+                    val nextText = getNextSyncText()
+                    manager.notify(NOTIFICATION_ID, buildNotification(nextText))
+                    showResultNotification("Failed", state.message)
+                }
+                is SyncState.Cancelled -> {
+                    val nextText = getNextSyncText()
+                    manager.notify(NOTIFICATION_ID, buildNotification(nextText))
                 }
             }
         }
@@ -187,6 +189,9 @@ class SyncNotificationManager @Inject constructor(
     }
 
     fun dismiss() {
+        observerJob?.cancel()
+        observerJob = null
+        started = false
         manager.cancel(NOTIFICATION_ID)
     }
 }

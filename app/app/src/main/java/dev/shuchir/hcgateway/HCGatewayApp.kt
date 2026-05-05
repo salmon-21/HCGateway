@@ -48,7 +48,7 @@ class HCGatewayApp : Application(), Configuration.Provider {
             if (enabled && !dsn.isNullOrBlank()) {
                 SentryAndroid.init(this@HCGatewayApp) { options ->
                     options.dsn = dsn
-                    options.tracesSampleRate = 1.0
+                    options.tracesSampleRate = 0.1
                 }
             }
         }
