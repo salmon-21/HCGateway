@@ -13,12 +13,17 @@ import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings as AndroidSettings
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.EnergySavingsLeaf
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -44,9 +49,11 @@ fun HomeScreen(
     val settings by viewModel.settings.collectAsState()
     val syncState by viewModel.syncState.collectAsState()
     val hasPermissions by viewModel.hasPermissions.collectAsState()
+    val batteryOptimized by viewModel.batteryOptimized.collectAsState()
     val serverReachable by viewModel.serverReachable.collectAsState()
     val pendingCounts by viewModel.pendingCounts.collectAsState()
     val serverCounts by viewModel.serverCounts.collectAsState()
+    val context = LocalContext.current
     var showDatePicker by remember { mutableStateOf(false) }
     var pendingSync by remember { mutableStateOf<(() -> Unit)?>(null) }
     var syncSource by remember { mutableIntStateOf(0) }
@@ -177,6 +184,41 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxWidth(),
                         shapes = ButtonDefaults.shapes(),
                     ) { Text("Grant Permissions") }
+                }
+            }
+
+            // --- Battery optimization card ---
+            if (batteryOptimized) {
+                FilledCard(tonalElevation = true) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(Icons.Default.EnergySavingsLeaf, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Battery optimization enabled", style = MaterialTheme.typography.titleSmall)
+                            Text("Background sync will be delayed. Disable optimization for reliable sync.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            try {
+                                val intent = Intent(AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                val intent = Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shapes = ButtonDefaults.shapes(),
+                    ) { Text("Disable Optimization") }
                 }
             }
 

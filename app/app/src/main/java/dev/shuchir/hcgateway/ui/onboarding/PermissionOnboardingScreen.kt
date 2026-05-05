@@ -83,9 +83,32 @@ fun PermissionOnboardingScreen(
     val batteryOptimized by viewModel.batteryOptimized.collectAsState()
     val context = LocalContext.current
 
+    // If launching the request returns no granted permissions, the user has either
+    // cancelled or the permissions are USER_FIXED (set to "Don't ask again", or revoked
+    // via the Health Connect settings page). In that state Android won't show the
+    // dialog again — open Health Connect's per-app settings page so the user can
+    // grant manually.
     val healthLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract(),
-    ) { viewModel.checkAll() }
+    ) { granted ->
+        if (granted.isEmpty()) {
+            try {
+                val intent = Intent("android.health.connect.action.MANAGE_HEALTH_PERMISSIONS").apply {
+                    putExtra(Intent.EXTRA_PACKAGE_NAME, context.packageName)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (_: Exception) {
+                try {
+                    val fallback = Intent("android.health.connect.action.HEALTH_HOME_SETTINGS").apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(fallback)
+                } catch (_: Exception) { }
+            }
+        }
+        viewModel.checkAll()
+    }
 
     var notificationGranted by remember {
         mutableStateOf(

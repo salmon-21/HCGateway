@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import timber.log.Timber
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -34,7 +35,6 @@ class SyncRepository @Inject constructor(
     private val gson: Gson,
 ) {
     companion object {
-        private const val TAG = "Sync"
         const val MIN_SYNC_DISPLAY_MS = 1000L
         private const val DEFAULT_LOOKBACK_DAYS = 29L
     }
@@ -73,6 +73,15 @@ class SyncRepository @Inject constructor(
 
     private suspend fun performSync(customStartDate: LocalDate?, customEndDate: LocalDate?) {
         cancelled = false
+
+        // Skip silently if Health Connect permissions are missing — the home screen
+        // already prompts the user to grant permissions, no need to surface a sync error.
+        if (!healthConnectRepository.hasAllPermissions()) {
+            Timber.i("Sync skipped: Health Connect permissions not granted")
+            _syncState.value = SyncState.Idle
+            return
+        }
+
         _syncState.value = SyncState.Syncing("", 0, RECORD_TYPES.size)
         currentTypeResults = mutableListOf()
         currentRecordCount = 0
@@ -85,20 +94,20 @@ class SyncRepository @Inject constructor(
             val settings = preferencesRepository.settings.first()
 
             if (customStartDate != null) {
-                android.util.Log.d(TAG, "Force sync: $customStartDate → ${customEndDate ?: LocalDate.now()}")
+                Timber.i("Force sync: $customStartDate → ${customEndDate ?: LocalDate.now()}")
                 val startTime = customStartDate.atStartOfDay(ZoneId.of("UTC")).toInstant()
                 val endTime = (customEndDate ?: LocalDate.now()).plusDays(1)
                     .atStartOfDay(ZoneId.of("UTC")).toInstant()
                 totalRecords = fullSync(startTime, endTime, typeResults, failedTypes)
             } else if (settings.fullSyncMode) {
-                android.util.Log.d(TAG, "Full sync (${DEFAULT_LOOKBACK_DAYS}d lookback)")
+                Timber.i("Full sync (${DEFAULT_LOOKBACK_DAYS}d lookback)")
                 val startTime = Instant.now().minus(java.time.Duration.ofDays(DEFAULT_LOOKBACK_DAYS))
                 totalRecords = fullSync(startTime, Instant.now(), typeResults, failedTypes)
             } else if (settings.changesToken.isNotBlank()) {
-                android.util.Log.d(TAG, "Delta sync")
+                Timber.i("Delta sync")
                 totalRecords = deltaSync(settings.changesToken, typeResults, failedTypes)
             } else {
-                android.util.Log.d(TAG, "Initial full sync (no changes token)")
+                Timber.i("Initial full sync (no changes token)")
                 val startTime = Instant.now().minus(java.time.Duration.ofDays(DEFAULT_LOOKBACK_DAYS))
                 totalRecords = fullSync(startTime, Instant.now(), typeResults, failedTypes)
             }
@@ -114,16 +123,16 @@ class SyncRepository @Inject constructor(
                 preferencesRepository.updateLastSyncResults(gson.toJson(typeResults))
             }
             val totalElapsed = System.currentTimeMillis() - syncStartTime
-            android.util.Log.d(TAG, "Sync done: $totalRecords records in ${totalElapsed}ms, ${failedTypes.size} failed")
+            Timber.i("Sync done: $totalRecords records in ${totalElapsed}ms, ${failedTypes.size} failed")
             _syncState.value = SyncState.Done(totalRecords, typeResults, failedTypes)
         } catch (e: CancellationException) {
-            android.util.Log.d(TAG, "Sync cancelled")
+            Timber.i("Sync cancelled")
             if (typeResults.isNotEmpty()) {
                 preferencesRepository.updateLastSyncResults(gson.toJson(typeResults))
             }
             throw e
         } catch (e: Exception) {
-            android.util.Log.e(TAG, "Sync error: ${e.message}")
+            Timber.e(e, "Sync error")
             _syncState.value = SyncState.Error(e.message ?: "Sync failed")
         }
     }
@@ -184,7 +193,7 @@ class SyncRepository @Inject constructor(
                         readerError?.let { throw it }
 
                         if (typeTotal > 0) {
-                            android.util.Log.d(TAG, "${type.name}: $typeTotal records")
+                            Timber.i("${type.name}: $typeTotal records")
                             synchronized(typeResults) {
                                 typeResults.add(TypeSyncResult(type.name, typeTotal))
                             }
@@ -195,10 +204,10 @@ class SyncRepository @Inject constructor(
                             e.cause is SecurityException ||
                             e.message?.contains("SecurityException") == true
                         if (!isUnsupported) {
-                            android.util.Log.e(TAG, "${type.name} failed: ${e.message}", e)
+                            Timber.e(e, "${type.name} failed")
                             synchronized(failedTypes) { failedTypes.add(type.name) }
                         } else {
-                            android.util.Log.d(TAG, "${type.name}: skipped (unsupported)")
+                            Timber.i("${type.name}: skipped (unsupported)")
                         }
                     }
                     val done = completed.incrementAndGet()
@@ -212,9 +221,9 @@ class SyncRepository @Inject constructor(
         try {
             val token = healthConnectRepository.getChangesToken()
             preferencesRepository.updateChangesToken(token)
-            android.util.Log.d(TAG, "Changes token saved")
+            Timber.i("Changes token saved")
         } catch (e: Exception) {
-            android.util.Log.e(TAG, "Failed to save changes token: ${e.message}")
+            Timber.e(e, "Failed to save changes token")
         }
 
         return totalRecordsAtomic.get()
