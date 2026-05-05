@@ -103,6 +103,10 @@ dependencies {
 
     // Sentry
     implementation(libs.sentry)
+    implementation(libs.sentry.timber)
+
+    // Timber
+    implementation(libs.timber)
 
     // Core
     implementation(libs.core.ktx)

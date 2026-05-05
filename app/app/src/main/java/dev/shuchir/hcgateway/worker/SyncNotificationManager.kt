@@ -24,6 +24,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import dagger.hilt.android.qualifiers.ApplicationContext
+import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -46,6 +47,7 @@ class SyncNotificationManager @Inject constructor(
     private val manager get() = context.getSystemService(NotificationManager::class.java)
 
     fun start() {
+        Timber.i("start()")
         createNotificationChannels()
         observeSyncState()
         scope.launch {
