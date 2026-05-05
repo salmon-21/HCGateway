@@ -7,6 +7,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import dagger.hilt.android.qualifiers.ApplicationContext
+import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -36,11 +37,14 @@ class SyncScheduler @Inject constructor(
                 ExistingPeriodicWorkPolicy.UPDATE,
                 request,
             )
-        } catch (_: Exception) {
+            Timber.i("Scheduled periodic sync: ${intervalMinutes}min")
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to schedule")
         }
     }
 
     fun cancel() {
         WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+        Timber.i("Cancelled periodic sync")
     }
 }

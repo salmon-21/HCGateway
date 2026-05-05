@@ -15,6 +15,7 @@ import dagger.assisted.AssistedInject
 import dev.shuchir.hcgateway.R
 import dev.shuchir.hcgateway.data.repository.SyncRepository
 import kotlinx.coroutines.flow.first
+import timber.log.Timber
 
 @HiltWorker
 class SyncWorker @AssistedInject constructor(
@@ -31,31 +32,30 @@ class SyncWorker @AssistedInject constructor(
             val elapsed = System.currentTimeMillis() - settings.lastSync
             val minInterval = settings.syncInterval * 60_000L * 3 / 4 // 75% of interval
             if (elapsed < minInterval) {
-                android.util.Log.d(TAG, "Skipped: ${elapsed / 1000}s since last sync (min ${minInterval / 1000}s)")
+                Timber.i("Skipped: ${elapsed / 1000}s since last sync (min ${minInterval / 1000}s)")
                 return Result.success()
             }
         }
 
-        android.util.Log.d(TAG, "Starting sync (interval=${settings.syncInterval}min)")
+        Timber.i("Starting sync (interval=${settings.syncInterval}min)")
         createNotificationChannel()
         try {
             setForeground(createProgressInfo("Syncing health data..."))
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "Failed to set foreground: ${e.message}")
+            Timber.w(e, "Failed to set foreground")
         }
 
         return try {
             syncRepository.sync()
-            android.util.Log.d(TAG, "Sync completed")
+            Timber.i("Sync completed")
             Result.success()
         } catch (e: Exception) {
-            android.util.Log.e(TAG, "Sync failed: ${e.message}")
+            Timber.e(e, "Sync failed")
             Result.retry()
         }
     }
 
     companion object {
-        private const val TAG = "SyncWorker"
         const val CHANNEL_ID = "hcgateway_sync"
         const val NOTIFICATION_ID = 1
     }

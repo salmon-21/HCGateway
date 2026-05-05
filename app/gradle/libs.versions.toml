@@ -64,6 +64,10 @@ firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging
 
 # Sentry
 sentry = { group = "io.sentry", name = "sentry-android", version.ref = "sentry" }
+sentry-timber = { group = "io.sentry", name = "sentry-android-timber", version.ref = "sentry" }
+
+# Timber
+timber = { group = "com.jakewharton.timber", name = "timber", version = "5.0.1" }
 
 # Core
 core-ktx = { group = "androidx.core", name = "core-ktx", version = "1.15.0" }
