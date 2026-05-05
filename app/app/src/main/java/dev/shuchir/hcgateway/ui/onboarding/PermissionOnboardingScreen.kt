@@ -3,12 +3,7 @@ package dev.shuchir.hcgateway.ui.onboarding
 import android.Manifest
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.material3.MaterialTheme
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.os.Build
-import android.os.PowerManager
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -33,10 +28,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.shuchir.hcgateway.R
 import dev.shuchir.hcgateway.data.local.PreferencesRepository
 import dev.shuchir.hcgateway.data.repository.HealthConnectRepository
+import dev.shuchir.hcgateway.data.repository.SystemSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,7 +42,7 @@ import javax.inject.Inject
 class PermissionOnboardingViewModel @Inject constructor(
     private val healthConnectRepository: HealthConnectRepository,
     private val preferencesRepository: PreferencesRepository,
-    @ApplicationContext private val appContext: Context,
+    private val systemSettings: SystemSettings,
 ) : ViewModel() {
 
     private val _healthGranted = MutableStateFlow(false)
@@ -62,9 +57,12 @@ class PermissionOnboardingViewModel @Inject constructor(
         viewModelScope.launch {
             _healthGranted.value = healthConnectRepository.hasAllPermissions()
         }
-        val pm = appContext.getSystemService(PowerManager::class.java)
-        _batteryOptimized.value = !pm.isIgnoringBatteryOptimizations(appContext.packageName)
+        _batteryOptimized.value = systemSettings.isBatteryOptimized()
     }
+
+    fun openHealthConnectAppSettings() = systemSettings.openHealthConnectAppSettings()
+
+    fun requestIgnoreBatteryOptimizations() = systemSettings.requestIgnoreBatteryOptimizations()
 
     fun completeOnboarding() {
         viewModelScope.launch {
@@ -83,30 +81,13 @@ fun PermissionOnboardingScreen(
     val batteryOptimized by viewModel.batteryOptimized.collectAsState()
     val context = LocalContext.current
 
-    // If launching the request returns no granted permissions, the user has either
-    // cancelled or the permissions are USER_FIXED (set to "Don't ask again", or revoked
-    // via the Health Connect settings page). In that state Android won't show the
-    // dialog again — open Health Connect's per-app settings page so the user can
-    // grant manually.
+    // Empty result means USER_FIXED: the user previously revoked permissions in
+    // Health Connect's settings, so Android refuses to show the prompt again.
+    // Deep-link to the per-app HC settings as the only path forward.
     val healthLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract(),
     ) { granted ->
-        if (granted.isEmpty()) {
-            try {
-                val intent = Intent("android.health.connect.action.MANAGE_HEALTH_PERMISSIONS").apply {
-                    putExtra(Intent.EXTRA_PACKAGE_NAME, context.packageName)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(intent)
-            } catch (_: Exception) {
-                try {
-                    val fallback = Intent("android.health.connect.action.HEALTH_HOME_SETTINGS").apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(fallback)
-                } catch (_: Exception) { }
-            }
-        }
+        if (granted.isEmpty()) viewModel.openHealthConnectAppSettings()
         viewModel.checkAll()
     }
 
@@ -194,27 +175,12 @@ fun PermissionOnboardingScreen(
                 Spacer(Modifier.height(16.dp))
             }
 
-            // Battery optimization
             PermissionRow(
                 icon = { Icon(Icons.Default.EnergySavingsLeaf, contentDescription = null, modifier = Modifier.size(24.dp)) },
                 title = "Unrestricted battery",
                 description = "Keep background sync running reliably",
                 granted = !batteryOptimized,
-                onRequest = {
-                    try {
-                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                            data = Uri.parse("package:${context.packageName}")
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        context.startActivity(intent)
-                    } catch (_: Exception) {
-                        // Fallback to battery settings page
-                        val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        context.startActivity(intent)
-                    }
-                },
+                onRequest = viewModel::requestIgnoreBatteryOptimizations,
             )
 
             Spacer(Modifier.weight(1f))

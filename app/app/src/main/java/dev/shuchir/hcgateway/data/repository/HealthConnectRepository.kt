@@ -47,21 +47,18 @@ class HealthConnectRepository @Inject constructor(
     suspend fun hasAllPermissions(): Boolean {
         val client = healthConnectClient ?: return false
         val granted = client.permissionController.getGrantedPermissions()
-        // If nothing is granted, the user has not approved permissions at all.
         if (granted.isEmpty()) return false
-        // Check that all granted-capable permissions are granted.
-        // Permissions for experimental/unsupported record types (e.g. MindfulnessSession)
-        // may not be recognized by Health Connect on this device and will never appear in
-        // the granted set even with "Allow all". Count those as satisfied — but only when
-        // at least some permissions are granted (otherwise everything would falsely match).
-        val supported = granted + (requiredPermissions - granted).filter { perm ->
-            val base = perm.substringAfterLast(".")
-                .removePrefix("READ_").removePrefix("WRITE_")
-            val hasReadSibling = "android.permission.health.READ_$base" in granted
-            val hasWriteSibling = "android.permission.health.WRITE_$base" in granted
-            !hasReadSibling && !hasWriteSibling
-        }
-        return requiredPermissions.all { it in supported }
+        return requiredPermissions.all { it in granted || isUnsupportedOnDevice(it, granted) }
+    }
+
+    // Permissions for experimental/unsupported record types (e.g. MindfulnessSession on
+    // Samsung) never appear in the granted set even after "Allow all". Treat them as
+    // satisfied iff *neither* the READ nor WRITE sibling is granted — guarded by an
+    // overall non-empty granted set so a fully-revoked app doesn't pass the check.
+    private fun isUnsupportedOnDevice(perm: String, granted: Set<String>): Boolean {
+        val base = perm.substringAfterLast(".").removePrefix("READ_").removePrefix("WRITE_")
+        return "android.permission.health.READ_$base" !in granted &&
+            "android.permission.health.WRITE_$base" !in granted
     }
 
     suspend fun readRecords(

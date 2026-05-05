@@ -1,14 +1,11 @@
 package dev.shuchir.hcgateway.ui.home
 
-import android.content.Context
-import android.os.PowerManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.shuchir.hcgateway.data.local.PreferencesRepository
 import dev.shuchir.hcgateway.data.local.UserSettings
 import dev.shuchir.hcgateway.data.remote.ApiService
@@ -16,6 +13,7 @@ import dev.shuchir.hcgateway.data.remote.RefreshRequest
 import dev.shuchir.hcgateway.data.repository.HealthConnectRepository
 import dev.shuchir.hcgateway.data.repository.NetworkMonitor
 import dev.shuchir.hcgateway.data.repository.SyncRepository
+import dev.shuchir.hcgateway.data.repository.SystemSettings
 import dev.shuchir.hcgateway.domain.model.RECORD_TYPES
 import dev.shuchir.hcgateway.domain.model.SyncState
 import dev.shuchir.hcgateway.domain.model.TypeSyncResult
@@ -38,7 +36,7 @@ class HomeViewModel @Inject constructor(
     private val healthConnectRepository: HealthConnectRepository,
     private val apiService: ApiService,
     private val networkMonitor: NetworkMonitor,
-    @ApplicationContext private val appContext: Context,
+    private val systemSettings: SystemSettings,
 ) : ViewModel() {
 
     val settings: StateFlow<UserSettings> = preferencesRepository.settings
@@ -93,7 +91,6 @@ class HomeViewModel @Inject constructor(
             }
         }
         ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
-        checkBatteryOptimization()
         // Re-check when network state changes
         viewModelScope.launch {
             networkMonitor.isConnected.collect { connected ->
@@ -137,9 +134,10 @@ class HomeViewModel @Inject constructor(
     }
 
     fun checkBatteryOptimization() {
-        val pm = appContext.getSystemService(PowerManager::class.java)
-        _batteryOptimized.value = !pm.isIgnoringBatteryOptimizations(appContext.packageName)
+        _batteryOptimized.value = systemSettings.isBatteryOptimized()
     }
+
+    fun requestIgnoreBatteryOptimizations() = systemSettings.requestIgnoreBatteryOptimizations()
 
     fun getRequiredPermissions(): Set<String> = healthConnectRepository.permissions
 
