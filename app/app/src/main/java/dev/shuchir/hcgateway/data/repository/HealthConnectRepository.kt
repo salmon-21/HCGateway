@@ -12,6 +12,7 @@ import androidx.health.connect.client.time.TimeRangeFilter
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import dev.shuchir.hcgateway.domain.model.RECORD_TYPES
+import timber.log.Timber
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -46,14 +47,14 @@ class HealthConnectRepository @Inject constructor(
     suspend fun hasAllPermissions(): Boolean {
         val client = healthConnectClient ?: return false
         val granted = client.permissionController.getGrantedPermissions()
+        // If nothing is granted, the user has not approved permissions at all.
+        if (granted.isEmpty()) return false
         // Check that all granted-capable permissions are granted.
         // Permissions for experimental/unsupported record types (e.g. MindfulnessSession)
         // may not be recognized by Health Connect on this device and will never appear in
-        // the granted set even with "Allow all". Count those as satisfied.
+        // the granted set even with "Allow all". Count those as satisfied — but only when
+        // at least some permissions are granted (otherwise everything would falsely match).
         val supported = granted + (requiredPermissions - granted).filter { perm ->
-            // A permission is unsupported if HC doesn't list it at all.
-            // Heuristic: if HC granted at least one permission, any permission NOT in granted
-            // that also has no sibling (READ↔WRITE pair) in granted is likely unsupported.
             val base = perm.substringAfterLast(".")
                 .removePrefix("READ_").removePrefix("WRITE_")
             val hasReadSibling = "android.permission.health.READ_$base" in granted
@@ -163,7 +164,7 @@ class HealthConnectRepository @Inject constructor(
             // Some records in Health Connect may have invalid data (e.g. startTime >= endTime).
             // Return what we have so far rather than failing the entire sync.
             if (e is IllegalArgumentException) {
-                android.util.Log.w("HealthConnect", "Skipping corrupt record in changes: ${e.message}")
+                Timber.w(e, "Skipping corrupt record in changes")
                 return ChangeResult(upserted, currentToken, false, tokenExpired = false)
             }
             throw e
