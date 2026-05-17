@@ -1,10 +1,11 @@
 """
-Computes derived collections (sleepRollingStats) from the *data the API now writes plain. Runs in a loop every SYNC_INTERVAL seconds
-and on POST /trigger.
+Computes derived collections (sleepRollingStats) on top of the data the
+API writes to hcgateway_<userid>. Runs in a loop every SYNC_INTERVAL
+seconds and on POST /trigger.
 
-Originally this service decrypted Fernet-encrypted source data into
-*_decrypted, but E1 removed the encryption layer and the API now writes
-plain directly. The decrypt step is gone; only aggregation remains.
+Historically this service decrypted Fernet-encrypted source data into a
+parallel *_decrypted DB; E1 removed the encryption layer and stage D
+collapsed the two DBs into one, so only post-processing remains.
 """
 
 import os
@@ -225,7 +226,7 @@ def main():
     port = int(os.environ.get("TRIGGER_PORT", "7000"))
     server = HTTPServer(("0.0.0.0", port), TriggerHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    print(f"Decrypt-sync started. Trigger: :{port}/trigger, Fallback interval: {SYNC_INTERVAL}s")
+    print(f"Post-process started. Trigger: :{port}/trigger, Fallback interval: {SYNC_INTERVAL}s")
 
     while True:
         _run_sync_locked()
