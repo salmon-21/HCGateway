@@ -213,7 +213,7 @@ def status():
             "checkedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }), 200
 
-    dst_db = mongo[f"hcgateway_{user['_id']}_decrypted"]
+    dst_db = mongo[f"hcgateway_{user['_id']}"]
 
     latest_per_type = {}
     try:
@@ -296,7 +296,7 @@ def sync(method):
         data = [data]
     print(f"{method}: {len(data)} records")
 
-    db = mongo[f'hcgateway_{userid}_decrypted']
+    db = mongo[f'hcgateway_{userid}']
     collection = db[method]
 
     operations = []
@@ -339,7 +339,7 @@ def fetch(method):
 
     queries = request.json.get("queries", []) if request.json else []
 
-    db = mongo[f'hcgateway_{userid}_decrypted']
+    db = mongo[f'hcgateway_{userid}']
     collection = db[method]
 
     META_KEYS = {"_id", "app", "start", "end"}
