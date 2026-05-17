@@ -1,6 +1,5 @@
 """
-Computes derived collections (sleepRollingStats) from the *_decrypted
-data the API now writes plain. Runs in a loop every SYNC_INTERVAL seconds
+Computes derived collections (sleepRollingStats) from the *data the API now writes plain. Runs in a loop every SYNC_INTERVAL seconds
 and on POST /trigger.
 
 Originally this service decrypted Fernet-encrypted source data into
@@ -189,7 +188,7 @@ def run_sync():
         users = get_users()
         for user in users:
             print(f"Processing user: {user['_id']}")
-            dst_db = mongo[f"hcgateway_{user['_id']}_decrypted"]
+            dst_db = mongo[f"hcgateway_{user['_id']}"]
             compute_sleep_rolling_stats(dst_db)
     except Exception as e:
         print(f"Error: {e}")
