@@ -59,32 +59,46 @@ def _normalize_nested_dates(doc):
                         pass
 
 
-def _heartrate_streak(col, max_days=365):
-    """Consecutive STATUS_TZ-calendar-days (today inclusive) with any heartRate data.
+# streak cache: {collection_namespace: (value, expiry_monotonic)}
+_streak_cache = {}
+_STREAK_TTL_SECONDS = 300
+
+
+def _heartrate_streak(col, tz=STATUS_TZ, max_days=365):
+    """Consecutive tz-calendar-days (today inclusive) with any heartRate data.
 
     Uses a single aggregation to collect distinct days, then walks backwards
     from today until a gap. If today has no data yet (early morning, post-reset),
     starts counting from yesterday so the streak doesn't drop to 0.
+
+    Cached per collection for STREAK_TTL_SECONDS because /status is polled
+    every 5 minutes and the streak is the dominant cost (~230ms of the handler).
     """
-    now_local = datetime.datetime.now(STATUS_TZ)
+    cache_key = (col.database.name, col.name, tz.key)
+    cached = _streak_cache.get(cache_key)
+    now_mono = time.monotonic()
+    if cached and cached[1] > now_mono:
+        return cached[0]
+
+    now_local = datetime.datetime.now(tz)
+    today_local = now_local.date()
     cutoff = now_local - datetime.timedelta(days=max_days)
     pipeline = [
         {"$match": {"start": {"$gte": cutoff, "$type": "date"}}},
         {"$project": {"day": {"$dateToString": {
             "format": "%Y-%m-%d",
             "date": "$start",
-            "timezone": STATUS_TZ.key,
+            "timezone": tz.key,
         }}}},
         {"$group": {"_id": "$day"}},
     ]
     try:
-        days_with_data = {d["_id"] for d in col.aggregate(pipeline, allowDiskUse=True)}
-    except Exception:
+        days_with_data = {d["_id"] for d in col.aggregate(pipeline)}
+    except Exception as e:
+        print(f"  streak aggregation failed: {e}")
         return 0
 
-    today_local = now_local.date()
-    today_iso = today_local.isoformat()
-    start_offset = 0 if today_iso in days_with_data else 1
+    start_offset = 0 if today_local.isoformat() in days_with_data else 1
     streak = 0
     for i in range(start_offset, max_days):
         d = (today_local - datetime.timedelta(days=i)).isoformat()
@@ -92,6 +106,8 @@ def _heartrate_streak(col, max_days=365):
             streak += 1
         else:
             break
+
+    _streak_cache[cache_key] = (streak, now_mono + _STREAK_TTL_SECONDS)
     return streak
 
 @v2.before_request
@@ -290,7 +306,10 @@ def status():
 
         primary_dt = latest_per_type.get("heartRate")
         if primary_dt:
-            age_hours = (datetime.datetime.now(STATUS_TZ) - primary_dt).total_seconds() / 3600
+            # Delta between two tz-aware datetimes is tz-invariant — keep
+            # both sides in UTC to make that explicit. STATUS_TZ only affects
+            # calendar-day labels (streak, checkedAt), not the threshold math.
+            age_hours = (datetime.datetime.now(datetime.timezone.utc) - primary_dt).total_seconds() / 3600
             if age_hours < STALE_OK_HOURS:
                 sync_status = "ok"
             elif age_hours < STALE_DEGRADED_HOURS:
