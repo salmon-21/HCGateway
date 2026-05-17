@@ -1,4 +1,8 @@
 # HCGateway
+
+> [!NOTE]
+> **This is a personal fork** of [ShuchirJ/HCGateway](https://github.com/ShuchirJ/HCGateway), maintained for the author's own deployment. Upstream parity is not a goal: the Android app has been rewritten in Jetpack Compose, additional Health Connect record types are supported, and a custom `decrypt-sync` pipeline plus a Grafana Cloud dashboard are bundled. Issues and PRs from outside users are not actively triaged. If you want the original project, use the upstream repository.
+
 HCGateway is a platform to let developers connect to the Health Connect API on Android via a REST API. You can view the documentation for the REST API [here](https://hcgateway.shuchir.dev/)
 
 <a href="https://www.buymeacoffee.com/shuchir" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a> 
