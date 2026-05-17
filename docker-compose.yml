@@ -1,7 +1,7 @@
 
 services:
   api:
-    image: ghcr.io/shuchirj/hcgateway:latest
+    build: ./api
     ports:
       - "6644:6644"
     env_file:
@@ -10,9 +10,12 @@ services:
     restart: always
     volumes:
       - ./api/service-account.json:/app/service-account.json
+    depends_on:
+      - db
+      - decrypt-sync
 
   db:
-    image: mongo
+    image: mongo:4.4.18
     restart: always
     ports:
       - "27017:27017"
@@ -22,3 +25,39 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: example
+
+  pdc-agent:
+    image: grafana/pdc-agent:latest
+    container_name: hcgateway_pdc
+    restart: always
+    network_mode: host
+    command:
+      - -token
+      - ${PDC_AGENT_TOKEN}
+      - -cluster
+      - prod-au-southeast-1
+      - -gcloud-hosted-grafana-id
+      - "887998"
+    depends_on:
+      - db
+
+  decrypt-sync:
+    build: ./decrypt-sync
+    container_name: hcgateway_decrypt
+    restart: always
+    environment:
+      MONGO_URI: mongodb://root:example@db:27017/
+      SYNC_INTERVAL: "180"
+    depends_on:
+      - db
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: hcgateway_cloudflared
+    restart: always
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - api
