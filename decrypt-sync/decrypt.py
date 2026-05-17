@@ -1,23 +1,24 @@
 """
-Decrypts HCGateway health data from MongoDB and writes
-flattened documents to *_decrypted collections for Grafana.
-Runs in a loop every SYNC_INTERVAL seconds.
+Computes derived collections (sleepRollingStats) from the *_decrypted
+data the API now writes plain. Runs in a loop every SYNC_INTERVAL seconds
+and on POST /trigger.
+
+Originally this service decrypted Fernet-encrypted source data into
+*_decrypted, but E1 removed the encryption layer and the API now writes
+plain directly. The decrypt step is gone; only aggregation remains.
 """
 
 import os
 import time
-import json
-import base64
 import math
 import statistics
 import threading
 import pymongo
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from cryptography.fernet import Fernet
 from datetime import datetime, timezone, timedelta
 from dateutil import parser as dateparser
 
-MONGO_URI = os.environ.get("MONGO_URI", "mongodb://root:example@db:27017/")
+MONGO_URI = os.environ["MONGO_URI"]
 SYNC_INTERVAL = int(os.environ.get("SYNC_INTERVAL", "300"))
 JST = timedelta(hours=9)
 
@@ -29,68 +30,9 @@ def get_users():
     return list(db["users"].find())
 
 
-def make_fernet(user):
-    hashed_password = user["password"]
-    key = base64.urlsafe_b64encode(hashed_password.encode("utf-8").ljust(32)[:32])
-    return Fernet(key)
-
-
-def parse_date(s):
-    if s is None:
-        return None
-    try:
-        return dateparser.isoparse(s)
-    except Exception:
-        return s
-
-
 def jst_day_start_utc(d):
     """Convert a date to the UTC datetime representing start of that JST day."""
     return datetime(d.year, d.month, d.day, tzinfo=timezone.utc) - JST
-
-
-def decrypt_user_data(user):
-    userid = user["_id"]
-    fernet = make_fernet(user)
-
-    src_db = mongo[f"hcgateway_{userid}"]
-    dst_db = mongo[f"hcgateway_{userid}_decrypted"]
-
-    for collection_name in src_db.list_collection_names():
-        src_col = src_db[collection_name]
-        dst_col = dst_db[collection_name]
-
-        existing_ids = set()
-        for doc in dst_col.find({}, {"_id": 1}):
-            existing_ids.add(doc["_id"])
-
-        new_count = 0
-        for doc in src_col.find():
-            if doc["_id"] in existing_ids:
-                continue
-
-            try:
-                decrypted = json.loads(fernet.decrypt(doc["data"].encode()).decode())
-            except Exception as e:
-                print(f"  Failed to decrypt {collection_name}/{doc['_id']}: {e}")
-                continue
-
-            flat = {
-                "_id": doc["_id"],
-                "app": doc.get("app"),
-                "start": parse_date(doc.get("start")),
-                "end": parse_date(doc.get("end")),
-            }
-            flat.update(decrypted)
-
-            try:
-                dst_col.insert_one(flat)
-                new_count += 1
-            except pymongo.errors.DuplicateKeyError:
-                pass
-
-        if new_count > 0:
-            print(f"  {collection_name}: {new_count} new docs decrypted")
 
 
 def _rolling_stats(vals):
@@ -247,7 +189,6 @@ def run_sync():
         users = get_users()
         for user in users:
             print(f"Processing user: {user['_id']}")
-            decrypt_user_data(user)
             dst_db = mongo[f"hcgateway_{user['_id']}_decrypted"]
             compute_sleep_rolling_stats(dst_db)
     except Exception as e:

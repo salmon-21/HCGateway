@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, g
-import os, json, urllib.request
+import os, json
 from dotenv import load_dotenv
 load_dotenv()
 from pyfcm import FCMNotification
@@ -13,10 +13,44 @@ mongo = pymongo.MongoClient(os.environ['MONGO_URI'])
 from argon2 import PasswordHasher
 ph = PasswordHasher()
 
-from cryptography.fernet import Fernet
-import base64, secrets, datetime, time
+import secrets, datetime, time
+from dateutil import parser as dateparser
 
 v2 = Blueprint('v2', __name__, url_prefix='/api/v2/')
+
+# Nested ISO-string fields in incoming /sync payloads that should be persisted
+# as BSON Date so Grafana / aggregation pipelines can use them without
+# $dateFromString. Mirrored from decrypt-sync's NESTED_DATE_FIELDS.
+NESTED_DATE_FIELDS = (
+    ("samples", ["time"]),
+    ("stages", ["startTime", "endTime"]),
+)
+
+
+def _parse_iso(s):
+    if isinstance(s, str):
+        try:
+            return dateparser.isoparse(s)
+        except Exception:
+            return s
+    return s
+
+
+def _normalize_nested_dates(doc):
+    for arr_key, time_keys in NESTED_DATE_FIELDS:
+        arr = doc.get(arr_key)
+        if not isinstance(arr, list):
+            continue
+        for elem in arr:
+            if not isinstance(elem, dict):
+                continue
+            for k in time_keys:
+                v = elem.get(k)
+                if isinstance(v, str):
+                    try:
+                        elem[k] = dateparser.isoparse(v)
+                    except Exception:
+                        pass
 
 @v2.before_request
 def before_request():
@@ -249,39 +283,26 @@ def counts():
 
 @v2.post("/sync/<method>")
 def sync(method):
-    print(request.json)
     method = method[0].lower() + method[1:]
     if not method:
         return jsonify({'error': 'no method provided'}), 400
     if not "data" in request.json:
         return jsonify({'error': 'no data provided'}), 400
-    
+
     userid = g.user
-    print(userid)
-
-    db = mongo['hcgateway']
-    usrStore = db['users']
-
-    try: user = usrStore.find_one({'_id': userid})
-    except InvalidId: return jsonify({'error': 'invalid user id'}), 400
-
-    print(user)
-    hashed_password = user['password']
-    key = base64.urlsafe_b64encode(hashed_password.encode("utf-8").ljust(32)[:32])
-    fernet = Fernet(key)
 
     data = request.json['data']
     if type(data) != list:
         data = [data]
-    print(method, len(data))
+    print(f"{method}: {len(data)} records")
 
-    db = mongo['hcgateway_'+userid]
+    db = mongo[f'hcgateway_{userid}_decrypted']
     collection = db[method]
 
     operations = []
     for item in data:
         itemid = item['metadata']['id']
-        dataObj = {k: v for k, v in item.items() if k not in ("metadata", "time", "startTime", "endTime")}
+        inner = {k: v for k, v in item.items() if k not in ("metadata", "time", "startTime", "endTime")}
 
         if "time" in item:
             starttime = item['time']
@@ -290,31 +311,22 @@ def sync(method):
             starttime = item['startTime']
             endtime = item['endTime']
 
-        encrypted = fernet.encrypt(json.dumps(dataObj).encode()).decode()
+        doc = {
+            "app": item['metadata']['dataOrigin'],
+            "start": _parse_iso(starttime),
+            "end": _parse_iso(endtime),
+            **inner,
+        }
+        _normalize_nested_dates(doc)
 
         operations.append(UpdateOne(
             {"_id": itemid},
-            {"$set": {
-                "id": itemid,
-                "data": encrypted,
-                "app": item['metadata']['dataOrigin'],
-                "start": starttime,
-                "end": endtime,
-            }},
-            upsert=True
+            {"$set": doc},
+            upsert=True,
         ))
 
     if operations:
         collection.bulk_write(operations, ordered=False)
-
-    # Single decrypt-sync trigger after the entire batch (was: per-item, causing 1000+ HTTP calls).
-    try:
-        urllib.request.urlopen(urllib.request.Request(
-            os.environ.get('DECRYPT_TRIGGER_URL', 'http://decrypt-sync:7000/trigger'),
-            method='POST'
-        ), timeout=5)
-    except Exception:
-        pass
 
     return jsonify({'success': True, 'count': len(operations)}), 200
 
@@ -324,28 +336,24 @@ def fetch(method):
         return jsonify({'error': 'no method provided'}), 400
 
     userid = g.user
-    db = mongo['hcgateway']
-    usrStore = db['users']
 
-    try: user = usrStore.find_one({'_id': userid})
-    except InvalidId: return jsonify({'error': 'invalid user id'}), 400
+    queries = request.json.get("queries", []) if request.json else []
 
-    hashed_password = user['password']
-    key = base64.urlsafe_b64encode(hashed_password.encode("utf-8").ljust(32)[:32])
-    fernet = Fernet(key)
-
-    if not "queries" in request.json:
-        queries = []
-    else:
-        queries = request.json['queries']
-    
-    db = mongo['hcgateway_'+userid]
+    db = mongo[f'hcgateway_{userid}_decrypted']
     collection = db[method]
-    
+
+    META_KEYS = {"_id", "app", "start", "end"}
     docs = []
     for doc in collection.find(queries):
-        doc['data'] = json.loads(fernet.decrypt(doc['data'].encode()).decode())
-        docs.append(doc)
+        inner = {k: v for k, v in doc.items() if k not in META_KEYS}
+        docs.append({
+            "_id": doc["_id"],
+            "id": doc["_id"],
+            "data": inner,
+            "app": doc.get("app"),
+            "start": doc.get("start"),
+            "end": doc.get("end"),
+        })
 
     return jsonify(docs), 200
 
