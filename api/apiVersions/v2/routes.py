@@ -1,10 +1,11 @@
 from flask import Blueprint, request, jsonify, g
-import os, json
+import os, json, urllib.request
 from dotenv import load_dotenv
 load_dotenv()
 from pyfcm import FCMNotification
 
 import pymongo
+from pymongo import UpdateOne
 from bson.objectid import ObjectId
 from bson.errors import *
 mongo = pymongo.MongoClient(os.environ['MONGO_URI'])
@@ -13,13 +14,13 @@ from argon2 import PasswordHasher
 ph = PasswordHasher()
 
 from cryptography.fernet import Fernet
-import base64, secrets, datetime
+import base64, secrets, datetime, time
 
 v2 = Blueprint('v2', __name__, url_prefix='/api/v2/')
 
 @v2.before_request
 def before_request():
-    if request.endpoint == 'v2.login' or request.endpoint == 'v2.refresh':
+    if request.endpoint in ('v2.login', 'v2.refresh', 'v2.health', 'v2.status'):
         return
     
     if not request.headers.get('Authorization'):
@@ -145,6 +146,107 @@ def revoke():
             "success": True
     }), 200
 
+@v2.get("/health")
+def health():
+    return jsonify({"status": "ok"}), 200
+
+@v2.get("/status")
+def status():
+    """External monitoring endpoint. Auth is enforced at the edge via a
+    Cloudflare Workers VPC binding; this handler intentionally has no
+    HCGateway-level auth (skipped in before_request).
+
+    dataSync.status tracks heartRate freshness only. heartRate is the
+    highest-cadence signal — if it stops, the watch/phone pipeline is
+    broken. Other realtime collections are reported in lastDataPerType
+    for debugging but do not drive status (distance/calories often lag
+    independently without indicating a real outage).
+    """
+    REALTIME_COLLECTIONS = ['heartRate', 'steps', 'distance', 'totalCaloriesBurned']
+    STALE_OK_HOURS = 12
+    STALE_DEGRADED_HOURS = 24
+
+    handler_t0 = time.monotonic()
+    components = {"api": {"status": "ok"}, "db": {}, "dataSync": {}}
+
+    user = mongo['hcgateway']['users'].find_one()
+    if not user:
+        components["db"] = {"status": "unknown"}
+        components["dataSync"] = {"status": "unknown"}
+        components["api"]["responseMs"] = int((time.monotonic() - handler_t0) * 1000)
+        return jsonify({
+            "components": components,
+            "checkedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }), 200
+
+    dst_db = mongo[f"hcgateway_{user['_id']}_decrypted"]
+
+    latest_per_type = {}
+    try:
+        t0 = time.time()
+        doc = dst_db["heartRate"].find_one(
+            {"start": {"$type": "date"}},
+            sort=[("start", -1)],
+            max_time_ms=5000,
+        )
+        ms = int((time.time() - t0) * 1000)
+        components["db"] = {"status": "ok", "responseMs": ms}
+        if doc and isinstance(doc.get("start"), datetime.datetime):
+            dt = doc["start"]
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.timezone.utc)
+            latest_per_type["heartRate"] = dt
+    except Exception:
+        components["db"] = {"status": "down"}
+
+    try:
+        for name in REALTIME_COLLECTIONS[1:]:
+            doc = dst_db[name].find_one(
+                {"start": {"$type": "date"}},
+                sort=[("start", -1)],
+                max_time_ms=5000,
+            )
+            if doc and isinstance(doc.get("start"), datetime.datetime):
+                dt = doc["start"]
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=datetime.timezone.utc)
+                latest_per_type[name] = dt
+
+        primary_dt = latest_per_type.get("heartRate")
+        if primary_dt:
+            age_hours = (datetime.datetime.now(datetime.timezone.utc) - primary_dt).total_seconds() / 3600
+            if age_hours < STALE_OK_HOURS:
+                sync_status = "ok"
+            elif age_hours < STALE_DEGRADED_HOURS:
+                sync_status = "degraded"
+            else:
+                sync_status = "down"
+            components["dataSync"] = {
+                "status": sync_status,
+                "lastData": primary_dt.isoformat(),
+                "lastDataPerType": {k: v.isoformat() for k, v in latest_per_type.items()},
+            }
+        else:
+            components["dataSync"] = {"status": "unknown"}
+    except Exception:
+        components["dataSync"] = {"status": "down"}
+
+    components["api"]["responseMs"] = int((time.monotonic() - handler_t0) * 1000)
+    return jsonify({
+        "components": components,
+        "checkedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }), 200
+
+@v2.get("/counts")
+def counts():
+    userid = g.user
+    db = mongo['hcgateway_'+userid]
+    result = {}
+    for col_name in db.list_collection_names():
+        display_name = col_name[0].upper() + col_name[1:]
+        result[display_name] = db[col_name].count_documents({})
+    return jsonify(result), 200
+
 @v2.post("/sync/<method>")
 def sync(method):
     print(request.json)
@@ -175,14 +277,11 @@ def sync(method):
 
     db = mongo['hcgateway_'+userid]
     collection = db[method]
-    
+
+    operations = []
     for item in data:
-        # print(item)
         itemid = item['metadata']['id']
-        dataObj = {}
-        for k, v in item.items():
-            if k != "metadata" and k != "time" and k != "startTime" and k != "endTime":
-                dataObj[k] = v
+        dataObj = {k: v for k, v in item.items() if k not in ("metadata", "time", "startTime", "endTime")}
 
         if "time" in item:
             starttime = item['time']
@@ -191,22 +290,33 @@ def sync(method):
             starttime = item['startTime']
             endtime = item['endTime']
 
-        toencrypt = json.dumps(dataObj).encode()
-        encrypted = fernet.encrypt(toencrypt).decode()
+        encrypted = fernet.encrypt(json.dumps(dataObj).encode()).decode()
 
-        # fernet.decrypt(encrypted.encode()).decode()
+        operations.append(UpdateOne(
+            {"_id": itemid},
+            {"$set": {
+                "id": itemid,
+                "data": encrypted,
+                "app": item['metadata']['dataOrigin'],
+                "start": starttime,
+                "end": endtime,
+            }},
+            upsert=True
+        ))
 
-        # print(starttime, endtime)
-        try:
-            print("creating")
-            collection.insert_one({"_id": itemid, "id": itemid, 'data': encrypted, "app": item['metadata']['dataOrigin'], "start": starttime, "end": endtime})
-        except:
-            print("updating")
-            collection.update_one({"_id": itemid}, {"$set": 
-                                                 {'data': encrypted, "app": item['metadata']['dataOrigin'], "start": starttime, "end": endtime}
-                                                })
+    if operations:
+        collection.bulk_write(operations, ordered=False)
 
-    return jsonify({'success': True}), 200
+    # Single decrypt-sync trigger after the entire batch (was: per-item, causing 1000+ HTTP calls).
+    try:
+        urllib.request.urlopen(urllib.request.Request(
+            os.environ.get('DECRYPT_TRIGGER_URL', 'http://decrypt-sync:7000/trigger'),
+            method='POST'
+        ), timeout=5)
+    except Exception:
+        pass
+
+    return jsonify({'success': True, 'count': len(operations)}), 200
 
 @v2.route("/fetch/<method>", methods=['POST'])
 def fetch(method):
