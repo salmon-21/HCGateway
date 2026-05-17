@@ -20,7 +20,7 @@ v2 = Blueprint('v2', __name__, url_prefix='/api/v2/')
 
 # Nested ISO-string fields in incoming /sync payloads that should be persisted
 # as BSON Date so Grafana / aggregation pipelines can use them without
-# $dateFromString. Mirrored from decrypt-sync's NESTED_DATE_FIELDS.
+# $dateFromString.
 NESTED_DATE_FIELDS = (
     ("samples", ["time"]),
     ("stages", ["startTime", "endTime"]),
