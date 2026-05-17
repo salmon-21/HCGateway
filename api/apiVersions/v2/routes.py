@@ -15,6 +15,12 @@ ph = PasswordHasher()
 
 import secrets, datetime, time
 from dateutil import parser as dateparser
+from zoneinfo import ZoneInfo
+
+# Timezone used for calendar-day computations in /status (streak, day boundaries).
+# Default UTC matches the moromiso Worker's TIMEZONE so both ends share the same
+# notion of "today". Set to e.g. "Asia/Tokyo" if both ends are switched to JST.
+STATUS_TZ = ZoneInfo(os.environ.get("STATUS_TZ", "UTC"))
 
 v2 = Blueprint('v2', __name__, url_prefix='/api/v2/')
 
@@ -51,6 +57,42 @@ def _normalize_nested_dates(doc):
                         elem[k] = dateparser.isoparse(v)
                     except Exception:
                         pass
+
+
+def _heartrate_streak(col, max_days=365):
+    """Consecutive STATUS_TZ-calendar-days (today inclusive) with any heartRate data.
+
+    Uses a single aggregation to collect distinct days, then walks backwards
+    from today until a gap. If today has no data yet (early morning, post-reset),
+    starts counting from yesterday so the streak doesn't drop to 0.
+    """
+    now_local = datetime.datetime.now(STATUS_TZ)
+    cutoff = now_local - datetime.timedelta(days=max_days)
+    pipeline = [
+        {"$match": {"start": {"$gte": cutoff, "$type": "date"}}},
+        {"$project": {"day": {"$dateToString": {
+            "format": "%Y-%m-%d",
+            "date": "$start",
+            "timezone": STATUS_TZ.key,
+        }}}},
+        {"$group": {"_id": "$day"}},
+    ]
+    try:
+        days_with_data = {d["_id"] for d in col.aggregate(pipeline, allowDiskUse=True)}
+    except Exception:
+        return 0
+
+    today_local = now_local.date()
+    today_iso = today_local.isoformat()
+    start_offset = 0 if today_iso in days_with_data else 1
+    streak = 0
+    for i in range(start_offset, max_days):
+        d = (today_local - datetime.timedelta(days=i)).isoformat()
+        if d in days_with_data:
+            streak += 1
+        else:
+            break
+    return streak
 
 @v2.before_request
 def before_request():
@@ -210,7 +252,7 @@ def status():
         components["api"]["responseMs"] = int((time.monotonic() - handler_t0) * 1000)
         return jsonify({
             "components": components,
-            "checkedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "checkedAt": datetime.datetime.now(STATUS_TZ).isoformat(),
         }), 200
 
     dst_db = mongo[f"hcgateway_{user['_id']}"]
@@ -248,7 +290,7 @@ def status():
 
         primary_dt = latest_per_type.get("heartRate")
         if primary_dt:
-            age_hours = (datetime.datetime.now(datetime.timezone.utc) - primary_dt).total_seconds() / 3600
+            age_hours = (datetime.datetime.now(STATUS_TZ) - primary_dt).total_seconds() / 3600
             if age_hours < STALE_OK_HOURS:
                 sync_status = "ok"
             elif age_hours < STALE_DEGRADED_HOURS:
@@ -258,6 +300,7 @@ def status():
             components["dataSync"] = {
                 "status": sync_status,
                 "lastData": primary_dt.isoformat(),
+                "streak": _heartrate_streak(dst_db["heartRate"]),
                 "lastDataPerType": {k: v.isoformat() for k, v in latest_per_type.items()},
             }
         else:
@@ -268,7 +311,7 @@ def status():
     components["api"]["responseMs"] = int((time.monotonic() - handler_t0) * 1000)
     return jsonify({
         "components": components,
-        "checkedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "checkedAt": datetime.datetime.now(STATUS_TZ).isoformat(),
     }), 200
 
 @v2.get("/counts")
