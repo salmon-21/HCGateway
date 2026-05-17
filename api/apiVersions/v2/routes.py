@@ -19,7 +19,7 @@ v2 = Blueprint('v2', __name__, url_prefix='/api/v2/')
 
 @v2.before_request
 def before_request():
-    if request.endpoint == 'v2.login' or request.endpoint == 'v2.refresh':
+    if request.endpoint in ('v2.login', 'v2.refresh', 'v2.health'):
         return
     
     if not request.headers.get('Authorization'):
@@ -143,6 +143,10 @@ def revoke():
     return jsonify({
             "success": True
     }), 200
+
+@v2.get("/health")
+def health():
+    return jsonify({"status": "ok"}), 200
 
 @v2.get("/counts")
 def counts():
