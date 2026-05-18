@@ -26,7 +26,7 @@ Per-session math:
 
 Per-day records get a 7-day rolling window. Timing fields (`bedtime`, `wake`, `midpoint`) use **circular statistics** (`_circular_stats`) because hour-of-day is modular. `duration` uses **linear statistics** (`_rolling_stats`).
 
-Output schema: see CUSTOMIZE.md (local) or the field list in `compute_sleep_rolling_stats`.
+Output schema: see the field list in `compute_sleep_rolling_stats`.
 
 ## MongoDB 4.4 constraints
 
