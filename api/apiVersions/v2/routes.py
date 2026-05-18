@@ -61,7 +61,7 @@ def _normalize_nested_dates(doc):
 
 # streak cache: {collection_namespace: (value, expiry_monotonic)}
 _streak_cache = {}
-_STREAK_TTL_SECONDS = 300
+_STREAK_TTL_SECONDS = 900  # > moromiso cron interval (300s) so 5-min pulls hit cache
 
 
 def _heartrate_streak(col, tz=STATUS_TZ, max_days=365):
