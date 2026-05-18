@@ -68,3 +68,7 @@ test.py
 __pycache__/
 flask_session/
 service-account.json
+
+# Local-only docs (private infra refs)
+/CLAUDE.md
+/CUSTOMIZE.md
