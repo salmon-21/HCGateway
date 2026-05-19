@@ -1,21 +1,25 @@
-"""
-Import Health Connect SQLite export into MongoDB.
-Writes to hcgateway_<userid> in the shape the API produces post-E1.
-"""
+"""Import Health Connect SQLite export into PostgreSQL.
 
+Reads /tmp/hc_export/health_connect_export.db (override with
+HC_SQLITE env var) and inserts gap-only rows into the live PG schema.
+Idempotent by source-record uuid: rows whose id already exists are
+skipped. Run multiple times safely.
+"""
+import os
 import sqlite3
-import pymongo
+import json
+import sys
 from datetime import datetime, timezone
 
-SQLITE_PATH = "/tmp/hc_export/health_connect_export.db"
-MONGO_URI = "mongodb://root:example@localhost:27017/"
-DB_NAME = "hcgateway_69b3d84d26c5efd2f4af0b53"
+sys.path.insert(0, os.path.dirname(__file__))
+from _pg_writer import connect, get_user_id, existing_ids, copy_rows  # noqa: E402
 
-mongo = pymongo.MongoClient(MONGO_URI)
-db = mongo[DB_NAME]
-sq = sqlite3.connect(SQLITE_PATH)
-sq.row_factory = sqlite3.Row
+SQLITE_PATH = os.environ.get("HC_SQLITE", "/tmp/hc_export/health_connect_export.db")
 
+
+# ---------------------------------------------------------------------------
+# SQLite helpers
+# ---------------------------------------------------------------------------
 
 def blob_to_uuid(b):
     h = b.hex()
@@ -23,286 +27,206 @@ def blob_to_uuid(b):
 
 
 def ms_to_dt(ms):
-    if ms is None:
-        return None
-    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc) if ms is not None else None
 
 
-def get_app_name(app_info_id):
-    row = sq.execute("SELECT package_name FROM application_info_table WHERE row_id = ?", (app_info_id,)).fetchone()
+def app_name(sq, app_info_id):
+    row = sq.execute(
+        "SELECT package_name FROM application_info_table WHERE row_id = ?",
+        (app_info_id,),
+    ).fetchone()
     return row["package_name"] if row else "unknown"
 
 
-def import_heart_rate():
-    col = db["heartRate"]
-    existing = {d["_id"] for d in col.find({}, {"_id": 1})}
+# ---------------------------------------------------------------------------
+# Per-method importers
+# ---------------------------------------------------------------------------
 
-    rows = sq.execute("SELECT * FROM heart_rate_record_table").fetchall()
-    ops = []
-    for r in rows:
+def import_heart_rate(pg, sq, user_id):
+    """heart_rate_record_table + series_table → heart_rate_sample (flatten)."""
+    have = existing_ids(pg, "heart_rate_sample", user_id, id_col="DISTINCT source_id")
+    rows = []
+    for r in sq.execute("SELECT * FROM heart_rate_record_table").fetchall():
         uid = blob_to_uuid(r["uuid"])
-        if uid in existing:
+        if uid in have:
             continue
-
-        samples_rows = sq.execute(
-            "SELECT beats_per_minute, epoch_millis FROM heart_rate_record_series_table WHERE parent_key = ?",
-            (r["row_id"],)
-        ).fetchall()
-
-        samples = [{"beatsPerMinute": s["beats_per_minute"], "time": ms_to_dt(s["epoch_millis"])} for s in samples_rows]
-
-        doc = {
-            "_id": uid,
-            "app": get_app_name(r["app_info_id"]),
-            "start": ms_to_dt(r["start_time"]),
-            "end": ms_to_dt(r["end_time"]),
-            "samples": samples,
-        }
-        ops.append(pymongo.InsertOne(doc))
-
-    if ops:
-        result = col.bulk_write(ops, ordered=False)
-        print(f"  heartRate: {result.inserted_count} inserted")
-    else:
-        print("  heartRate: no new records")
+        app = app_name(sq, r["app_info_id"])
+        for s in sq.execute(
+            "SELECT beats_per_minute, epoch_millis FROM heart_rate_record_series_table "
+            "WHERE parent_key = ?",
+            (r["row_id"],),
+        ):
+            t = ms_to_dt(s["epoch_millis"])
+            if t is None or s["beats_per_minute"] is None:
+                continue
+            rows.append((t, user_id, int(s["beats_per_minute"]), uid, app))
+    n = copy_rows(pg, "heart_rate_sample",
+                  ["time", "user_id", "bpm", "source_id", "app"], rows)
+    print(f"  heart_rate_sample: {n} samples")
 
 
-def import_sleep():
-    col = db["sleepSession"]
-    existing = {d["_id"] for d in col.find({}, {"_id": 1})}
-
-    rows = sq.execute("SELECT * FROM sleep_session_record_table").fetchall()
-    ops = []
-    for r in rows:
+def import_sleep(pg, sq, user_id):
+    have = existing_ids(pg, "sleep_session", user_id)
+    rows = []
+    for r in sq.execute("SELECT * FROM sleep_session_record_table").fetchall():
         uid = blob_to_uuid(r["uuid"])
-        if uid in existing:
+        if uid in have:
             continue
-
-        stages_rows = sq.execute(
-            "SELECT stage_start_time, stage_end_time, stage_type FROM sleep_stages_table WHERE parent_key = ?",
-            (r["row_id"],)
-        ).fetchall()
-
-        stages = [{
-            "startTime": ms_to_dt(s["stage_start_time"]),
-            "endTime": ms_to_dt(s["stage_end_time"]),
-            "stage": s["stage_type"],
-        } for s in stages_rows]
-
-        doc = {
-            "_id": uid,
-            "app": get_app_name(r["app_info_id"]),
-            "start": ms_to_dt(r["start_time"]),
-            "end": ms_to_dt(r["end_time"]),
-            "stages": stages,
-        }
-        ops.append(pymongo.InsertOne(doc))
-
-    if ops:
-        result = col.bulk_write(ops, ordered=False)
-        print(f"  sleepSession: {result.inserted_count} inserted")
-    else:
-        print("  sleepSession: no new records")
+        stages = [
+            {
+                "startTime": ms_to_dt(s["stage_start_time"]).isoformat(),
+                "endTime": ms_to_dt(s["stage_end_time"]).isoformat(),
+                "stage": s["stage_type"],
+            }
+            for s in sq.execute(
+                "SELECT stage_start_time, stage_end_time, stage_type FROM sleep_stages_table "
+                "WHERE parent_key = ?",
+                (r["row_id"],),
+            )
+        ]
+        rows.append((
+            ms_to_dt(r["start_time"]), uid, user_id,
+            ms_to_dt(r["end_time"]), app_name(sq, r["app_info_id"]),
+            json.dumps(stages) if stages else None,
+        ))
+    n = copy_rows(pg, "sleep_session",
+                  ["start_at", "id", "user_id", "end_at", "app", "stages"], rows)
+    print(f"  sleep_session: {n}")
 
 
-def import_steps():
-    col = db["steps"]
-    existing = {d["_id"] for d in col.find({}, {"_id": 1})}
+def _interval_import(pg, sq, *, src_table, src_value_col, dst_table, dst_value_col,
+                     dst_cast=None, user_id):
+    """Generic 1:1 interval importer (steps, distance, kcal, …).
 
-    rows = sq.execute("SELECT * FROM steps_record_table").fetchall()
-    ops = []
-    for r in rows:
+    src_cast is an optional Python lambda applied to the source value before
+    insertion (e.g. joules→kcal). dst_value_col gives the target PG column.
+    """
+    have = existing_ids(pg, dst_table, user_id)
+    rows = []
+    for r in sq.execute(f"SELECT * FROM {src_table}").fetchall():
         uid = blob_to_uuid(r["uuid"])
-        if uid in existing:
+        if uid in have or r[src_value_col] is None:
             continue
-        doc = {
-            "_id": uid,
-            "app": get_app_name(r["app_info_id"]),
-            "start": ms_to_dt(r["start_time"]),
-            "end": ms_to_dt(r["end_time"]),
-            "count": r["count"],
-        }
-        ops.append(pymongo.InsertOne(doc))
-
-    if ops:
-        result = col.bulk_write(ops, ordered=False)
-        print(f"  steps: {result.inserted_count} inserted")
-    else:
-        print("  steps: no new records")
+        v = dst_cast(r[src_value_col]) if dst_cast else r[src_value_col]
+        rows.append((
+            ms_to_dt(r["start_time"]), uid, user_id,
+            ms_to_dt(r["end_time"]), app_name(sq, r["app_info_id"]),
+            v,
+        ))
+    n = copy_rows(pg, dst_table,
+                  ["start_at", "id", "user_id", "end_at", "app", dst_value_col], rows)
+    print(f"  {dst_table}: {n}")
 
 
-def import_distance():
-    """SQLite distance is in meters. Grafana uses $distance.inKilometers."""
-    col = db["distance"]
-    existing = {d["_id"] for d in col.find({}, {"_id": 1})}
+def import_steps(pg, sq, user_id):
+    _interval_import(pg, sq,
+        src_table="steps_record_table", src_value_col="count",
+        dst_table="steps", dst_value_col="count", user_id=user_id)
 
-    rows = sq.execute("SELECT * FROM distance_record_table").fetchall()
-    ops = []
-    for r in rows:
+
+def import_distance(pg, sq, user_id):
+    _interval_import(pg, sq,
+        src_table="distance_record_table", src_value_col="distance",
+        dst_table="distance", dst_value_col="meters", user_id=user_id)
+
+
+def import_calories(pg, sq, user_id):
+    _interval_import(pg, sq,
+        src_table="total_calories_burned_record_table", src_value_col="energy",
+        dst_table="total_calories_burned", dst_value_col="kcal",
+        dst_cast=lambda joules: joules / 4184.0, user_id=user_id)
+
+
+def import_oxygen_saturation(pg, sq, user_id):
+    """oxygen_saturation has only start_at (no end_at)."""
+    have = existing_ids(pg, "oxygen_saturation", user_id)
+    rows = []
+    for r in sq.execute("SELECT * FROM oxygen_saturation_record_table").fetchall():
         uid = blob_to_uuid(r["uuid"])
-        if uid in existing:
+        if uid in have or r["percentage"] is None:
             continue
-        meters = r["distance"]
-        doc = {
-            "_id": uid,
-            "app": get_app_name(r["app_info_id"]),
-            "start": ms_to_dt(r["start_time"]),
-            "end": ms_to_dt(r["end_time"]),
-            "distance": {
-                "inMeters": meters,
-                "inKilometers": meters / 1000,
-            },
-        }
-        ops.append(pymongo.InsertOne(doc))
-
-    if ops:
-        result = col.bulk_write(ops, ordered=False)
-        print(f"  distance: {result.inserted_count} inserted")
-    else:
-        print("  distance: no new records")
+        rows.append((
+            uid, user_id, ms_to_dt(r["time"]),
+            int(r["percentage"]), app_name(sq, r["app_info_id"]),
+        ))
+    n = copy_rows(pg, "oxygen_saturation",
+                  ["id", "user_id", "start_at", "percentage", "app"], rows)
+    print(f"  oxygen_saturation: {n}")
 
 
-def import_calories():
-    """SQLite energy is in joules. Grafana uses $energy.inKilocalories."""
-    col = db["totalCaloriesBurned"]
-    existing = {d["_id"] for d in col.find({}, {"_id": 1})}
-
-    rows = sq.execute("SELECT * FROM total_calories_burned_record_table").fetchall()
-    ops = []
-    for r in rows:
-        uid = blob_to_uuid(r["uuid"])
-        if uid in existing:
-            continue
-        joules = r["energy"]
-        doc = {
-            "_id": uid,
-            "app": get_app_name(r["app_info_id"]),
-            "start": ms_to_dt(r["start_time"]),
-            "end": ms_to_dt(r["end_time"]),
-            "energy": {
-                "inJoules": joules,
-                "inKilocalories": joules / 4184,
-            },
-        }
-        ops.append(pymongo.InsertOne(doc))
-
-    if ops:
-        result = col.bulk_write(ops, ordered=False)
-        print(f"  totalCaloriesBurned: {result.inserted_count} inserted")
-    else:
-        print("  totalCaloriesBurned: no new records")
-
-
-def import_spo2():
-    col = db["oxygenSaturation"]
-    existing = {d["_id"] for d in col.find({}, {"_id": 1})}
-
-    rows = sq.execute("SELECT * FROM oxygen_saturation_record_table").fetchall()
-    ops = []
-    for r in rows:
-        uid = blob_to_uuid(r["uuid"])
-        if uid in existing:
-            continue
-
-        doc = {
-            "_id": uid,
-            "app": get_app_name(r["app_info_id"]),
-            "start": ms_to_dt(r["time"]),
-            "end": None,
-            "percentage": r["percentage"],
-        }
-        ops.append(pymongo.InsertOne(doc))
-
-    if ops:
-        result = col.bulk_write(ops, ordered=False)
-        print(f"  oxygenSaturation: {result.inserted_count} inserted")
-    else:
-        print("  oxygenSaturation: no new records")
-
-
-def import_speed():
-    col = db["speed"]
-    existing = {d["_id"] for d in col.find({}, {"_id": 1})}
-
-    # Speed is a series table linked to exercise sessions
-    # But in HCGateway it's stored per-record with samples
-    # Check if there's a parent speed record table
-    rows = sq.execute("SELECT * FROM speed_record_table").fetchall()
-    if not rows:
-        print("  speed: no records in SQLite")
+def import_speed(pg, sq, user_id):
+    """SpeedRecordTable + speed_record_table → speed_sample (flatten)."""
+    have = existing_ids(pg, "speed_sample", user_id, id_col="DISTINCT source_id")
+    try:
+        parents = sq.execute("SELECT * FROM SpeedRecordTable").fetchall()
+    except sqlite3.OperationalError:
+        print("  speed_sample: 0 (no SpeedRecordTable)")
         return
-
-    # speed_record_table is a series table with parent_key
-    # Need to find the parent - check SpeedRecordTable
-    parent_rows = sq.execute("SELECT * FROM SpeedRecordTable").fetchall()
-    ops = []
-    for r in parent_rows:
+    rows = []
+    for r in parents:
         uid = blob_to_uuid(r["uuid"])
-        if uid in existing:
+        if uid in have:
             continue
-
-        samples_rows = sq.execute(
+        app = app_name(sq, r["app_info_id"])
+        for s in sq.execute(
             "SELECT speed, epoch_millis FROM speed_record_table WHERE parent_key = ?",
-            (r["row_id"],)
-        ).fetchall()
-
-        samples = [{"metersPerSecond": s["speed"], "time": ms_to_dt(s["epoch_millis"])} for s in samples_rows]
-
-        doc = {
-            "_id": uid,
-            "app": get_app_name(r["app_info_id"]),
-            "start": ms_to_dt(r["start_time"]),
-            "end": ms_to_dt(r["end_time"]),
-            "samples": samples,
-        }
-        ops.append(pymongo.InsertOne(doc))
-
-    if ops:
-        result = col.bulk_write(ops, ordered=False)
-        print(f"  speed: {result.inserted_count} inserted")
-    else:
-        print("  speed: no new records")
+            (r["row_id"],),
+        ):
+            t = ms_to_dt(s["epoch_millis"])
+            if t is None or s["speed"] is None:
+                continue
+            rows.append((t, user_id, float(s["speed"]), uid, app))
+    n = copy_rows(pg, "speed_sample",
+                  ["time", "user_id", "speed_mps", "source_id", "app"], rows)
+    print(f"  speed_sample: {n} samples")
 
 
-def import_exercise():
-    col = db["exerciseSession"]
-    existing = {d["_id"] for d in col.find({}, {"_id": 1})}
-
-    rows = sq.execute("SELECT * FROM exercise_session_record_table").fetchall()
-    ops = []
-    for r in rows:
+def import_exercise(pg, sq, user_id):
+    """exercise_session — drops title/notes (no columns in PG schema)."""
+    have = existing_ids(pg, "exercise_session", user_id)
+    rows = []
+    for r in sq.execute("SELECT * FROM exercise_session_record_table").fetchall():
         uid = blob_to_uuid(r["uuid"])
-        if uid in existing:
+        if uid in have or r["exercise_type"] is None:
             continue
+        rows.append((
+            ms_to_dt(r["start_time"]), uid, user_id,
+            ms_to_dt(r["end_time"]), app_name(sq, r["app_info_id"]),
+            int(r["exercise_type"]),
+        ))
+    n = copy_rows(pg, "exercise_session",
+                  ["start_at", "id", "user_id", "end_at", "app", "exercise_type"], rows)
+    print(f"  exercise_session: {n}")
 
-        doc = {
-            "_id": uid,
-            "app": get_app_name(r["app_info_id"]),
-            "start": ms_to_dt(r["start_time"]),
-            "end": ms_to_dt(r["end_time"]),
-            "exerciseType": r["exercise_type"],
-            "title": r["title"],
-            "notes": r["notes"],
-        }
-        ops.append(pymongo.InsertOne(doc))
 
-    if ops:
-        result = col.bulk_write(ops, ordered=False)
-        print(f"  exerciseSession: {result.inserted_count} inserted")
-    else:
-        print("  exerciseSession: no new records")
-
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 def main():
-    print("Importing Health Connect export into MongoDB...")
-    import_heart_rate()
-    import_sleep()
-    import_steps()
-    import_distance()
-    import_calories()
-    import_spo2()
-    import_speed()
-    import_exercise()
+    if not os.path.exists(SQLITE_PATH):
+        print(f"SQLite export not found at {SQLITE_PATH}. "
+              f"Set HC_SQLITE to override.", file=sys.stderr)
+        sys.exit(1)
+
+    pg = connect()
+    user_id = get_user_id(pg)
+    print(f"Importing Health Connect export → user {user_id}")
+
+    sq = sqlite3.connect(SQLITE_PATH)
+    sq.row_factory = sqlite3.Row
+
+    import_heart_rate(pg, sq, user_id)
+    import_sleep(pg, sq, user_id)
+    import_steps(pg, sq, user_id)
+    import_distance(pg, sq, user_id)
+    import_calories(pg, sq, user_id)
+    import_oxygen_saturation(pg, sq, user_id)
+    import_speed(pg, sq, user_id)
+    import_exercise(pg, sq, user_id)
+
+    pg.close()
+    sq.close()
     print("Done.")
 
 

@@ -75,4 +75,5 @@ service-account.json
 # Runtime data / caches
 /db/
 /pg/data/
+/pg/backups/
 /.cocoindex_code/
