@@ -42,33 +42,6 @@ def _coerce_time(v):
     return v
 
 
-_LASTDATA_TABLES = (
-    ("steps", "steps", "start_at"),
-    ("distance", "distance", "start_at"),
-    ("totalCaloriesBurned", "total_calories_burned", "start_at"),
-)
-
-
-def _latest_per_type(user_id):
-    """`max(start_at)` for each secondary realtime table. No cache —
-    psycopg's prepare_threshold=0 (see db.py) makes each call ~12 ms
-    after the connection warms once at pool start, so cache TTL alignment
-    with moromiso's 5-min cron isn't a concern."""
-    result = {}
-    for method, table, col in _LASTDATA_TABLES:
-        try:
-            row = fetch_one(
-                f"SELECT max({col}) AS latest FROM {table} WHERE user_id = %s",
-                (user_id,),
-            )
-        except Exception as e:
-            print(f"  latest({table}) failed: {e}")
-            continue
-        if row and row["latest"]:
-            result[method] = row["latest"]
-    return result
-
-
 def _heartrate_streak(user_id, tz=STATUS_TZ, max_days=365):
     """Consecutive tz-calendar-days (today inclusive) with heart_rate data.
     Counts from yesterday when today has no data yet so the streak doesn't
@@ -306,7 +279,18 @@ def status():
         user_id = fallback["id"]
 
     try:
-        latest_per_type.update(_latest_per_type(user_id))
+        # max(start_at) for the secondary realtime tables. Each is a
+        # prepared-statement call (~12 ms warm) thanks to db.py setting
+        # prepare_threshold=0; planning cost only paid on connection warmup.
+        for method, table in (("steps", "steps"),
+                              ("distance", "distance"),
+                              ("totalCaloriesBurned", "total_calories_burned")):
+            row = fetch_one(
+                f"SELECT max(start_at) AS latest FROM {table} WHERE user_id = %s",
+                (user_id,),
+            )
+            if row and row["latest"]:
+                latest_per_type[method] = row["latest"]
 
         primary_dt = latest_per_type.get("heartRate")
         if primary_dt:
