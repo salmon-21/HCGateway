@@ -44,13 +44,8 @@ def _coerce_time(v):
 
 def _heartrate_streak(user_id, tz=STATUS_TZ, max_days=365):
     """Consecutive tz-calendar-days (today inclusive) with heart_rate data.
-    Counts from yesterday when today has no data yet so the streak doesn't
-    drop to 0 in the early morning.
-
-    Queries `heart_rate_hourly` (cagg, ~18k rows) rather than the raw
-    samples table (~1.4M rows) — same day coverage, 13× faster on the SQL
-    side; with prepared statements ~12 ms total.
-    """
+    Counts from yesterday when today has no data so the streak doesn't drop
+    to 0 in the early morning."""
     now_local = datetime.datetime.now(tz)
     today_local = now_local.date()
     cutoff = now_local - datetime.timedelta(days=max_days)
@@ -242,11 +237,8 @@ def status():
     handler_t0 = time.monotonic()
     components = {"api": {"status": "ok"}, "db": {}, "dataSync": {}}
 
-    # Pick user_id from the freshest heart_rate_sample row.
-    # `SELECT max(time)` benefits from TimescaleDB's per-chunk index lookup
-    # (single chunk, ~5ms). `ORDER BY ... LIMIT 1` here planned to a parallel
-    # seq scan across all 100+ chunks, which dwarfed the gain.
-    # The follow-up `WHERE time = max` also stays on the latest chunk.
+    # `WHERE time = (SELECT max(time))` keeps TimescaleDB on the latest chunk;
+    # `ORDER BY time DESC LIMIT 1` instead planned to a parallel seq scan.
     user_id = None
     latest_per_type = {}
     try:
@@ -279,9 +271,6 @@ def status():
         user_id = fallback["id"]
 
     try:
-        # max(start_at) for the secondary realtime tables. Each is a
-        # prepared-statement call (~12 ms warm) thanks to db.py setting
-        # prepare_threshold=0; planning cost only paid on connection warmup.
         for method, table in (("steps", "steps"),
                               ("distance", "distance"),
                               ("totalCaloriesBurned", "total_calories_burned")):

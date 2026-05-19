@@ -161,7 +161,10 @@ def import_sleep():
     standalone = []
     for r in sleep_rows:
         cid = r.get("combined_id", "").strip()
-        (combined_groups[cid] if cid else standalone).append(r) if cid else standalone.append(r)
+        if cid:
+            combined_groups[cid].append(r)
+        else:
+            standalone.append(r)
 
     combined_rows = read_csv("com.samsung.shealth.sleep_combined.{SH_TS}.csv")
     combined_map = {
@@ -241,10 +244,11 @@ def import_sleep():
         if not is_gap_jst(start_dt, have_days):
             continue
         pkg = r.get("com.samsung.health.sleep.pkg_name", "").strip()
+        stages = build_stages(datauuid)
         rows_out.append((
             start_dt, datauuid, USER_ID, end_dt,
             pkg or "com.sec.android.app.shealth",
-            json.dumps(build_stages(datauuid)) or None,
+            json.dumps(stages) if stages else None,
         ))
 
     n = copy_rows(PG, "sleep_session",
@@ -392,6 +396,16 @@ def import_hrv():
     have = existing_ids(PG, "heart_rate_variability", USER_ID)
     have_days = existing_days_jst(PG, "heart_rate_variability", USER_ID, "start_at")
     json_base = f"{SH_DIR}/jsons/com.samsung.health.hrv"
+    # Build {datauuid → json path} once instead of os.listdir per row.
+    hrv_json_by_uuid = {}
+    if os.path.isdir(json_base):
+        for subdir in os.listdir(json_base):
+            d = os.path.join(json_base, subdir)
+            if not os.path.isdir(d):
+                continue
+            for fname in os.listdir(d):
+                if fname.endswith(".binning_data.json"):
+                    hrv_json_by_uuid[fname[:-len(".binning_data.json")]] = os.path.join(d, fname)
     out = []
     for r in read_csv("com.samsung.health.hrv.{SH_TS}.csv"):
         datauuid = _short(r, "datauuid")
@@ -405,18 +419,15 @@ def import_hrv():
         if not start_dt or not end_dt or not is_gap_jst(start_dt, have_days):
             continue
         rmssd_avg = None
-        if os.path.isdir(json_base):
-            for subdir in os.listdir(json_base):
-                p = os.path.join(json_base, subdir, f"{datauuid}.binning_data.json")
-                if os.path.exists(p):
-                    try:
-                        with open(p) as jf:
-                            vals = [s.get("rmssd") for s in json.load(jf) if s.get("rmssd") is not None]
-                        if vals:
-                            rmssd_avg = sum(vals) / len(vals)
-                    except Exception:
-                        pass
-                    break
+        p = hrv_json_by_uuid.get(datauuid)
+        if p:
+            try:
+                with open(p) as jf:
+                    vals = [s.get("rmssd") for s in json.load(jf) if s.get("rmssd") is not None]
+                if vals:
+                    rmssd_avg = sum(vals) / len(vals)
+            except Exception:
+                pass
         if rmssd_avg is None:
             continue
         pkg = _short(r, "pkg_name") or "com.sec.android.app.shealth"

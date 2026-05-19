@@ -5,6 +5,8 @@ Connect SQLite, etc.) and stream into the live PG via COPY. Gap-fill is
 the typical use case — only insert rows that aren't already covered.
 """
 import os
+from datetime import timedelta, timezone
+
 import psycopg
 
 POSTGRES_URI = os.environ.get(
@@ -12,6 +14,7 @@ POSTGRES_URI = os.environ.get(
     "postgresql://hcgateway:example@localhost:5432/hcgateway",
 )
 DEFAULT_USERNAME = os.environ.get("BACKFILL_USERNAME", "salmon21")
+JST = timezone(timedelta(hours=9))
 
 
 def connect():
@@ -53,8 +56,6 @@ def existing_days_jst(conn, table, user_id, time_col):
 
 def is_gap_jst(dt, existing_days):
     """True iff dt's JST calendar date is NOT in `existing_days`."""
-    from datetime import timedelta, timezone
-    JST = timezone(timedelta(hours=9))
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     j = dt.astimezone(JST)

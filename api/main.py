@@ -18,9 +18,6 @@ CORS(app)
 from apiVersions.v2 import init_app as init_v2
 init_v2(app)
 
-# bool(os.environ.get('APP_DEBUG', False)) flips to True for any non-empty
-# value (including the literal string "0") — a long-standing footgun. Parse
-# the value as a real boolean instead.
 _debug = os.environ.get('APP_DEBUG', '').strip().lower() in ('1', 'true', 'yes', 'on')
 
 app.run(host=os.environ.get('APP_HOST', '0.0.0.0'),
