@@ -1,14 +1,6 @@
--- Add circular stddev to sleep_rolling_stats so Bedtime / Wake panels
--- get Upper/Lower bands (matches the old Python _circular_stats output).
-
--- ---------------------------------------------------------------------------
--- circular_stats(vals) — circular mean and stddev of hour-of-day values
---
--- Mean uses atan2 over sin/cos at the 24-hour cycle.
--- Stddev uses the "unwrap to within ±12 of the mean" trick so the spread
--- is well-defined on the cycle (e.g. bedtimes 23.5 and 0.5 are 1h apart,
--- not 23h).
--- ---------------------------------------------------------------------------
+-- Circular mean and stddev for hour-of-day values. Used to give Bedtime
+-- and Wake panels Upper/Lower bands on a 24-hour cycle (e.g. bedtimes
+-- 23.5 and 0.5 are 1 h apart, not 23 h).
 CREATE OR REPLACE FUNCTION circular_stats(vals double precision[])
 RETURNS TABLE(mean double precision,
               upper double precision,
@@ -17,10 +9,7 @@ DECLARE
   sin_m double precision;
   cos_m double precision;
   m double precision;
-  v double precision;
-  diff double precision;
   sd double precision;
-  unwrapped double precision[] := ARRAY[]::double precision[];
 BEGIN
   IF vals IS NULL OR array_length(vals, 1) IS NULL THEN
     RETURN;
@@ -30,7 +19,6 @@ BEGIN
     INTO sin_m, cos_m
     FROM unnest(vals) AS t(x);
 
-  -- atan2 ∈ [-π,π] ⇒ mean ∈ [-12,12]; bring into [0,24).
   m := atan2(sin_m, cos_m) * 12.0 / pi();
   IF m < 0 THEN
     m := m + 24.0;
@@ -42,14 +30,9 @@ BEGIN
     RETURN;
   END IF;
 
-  FOREACH v IN ARRAY vals LOOP
-    diff := v - m;
-    WHILE diff > 12 LOOP diff := diff - 24; END LOOP;
-    WHILE diff < -12 LOOP diff := diff + 24; END LOOP;
-    unwrapped := unwrapped || (m + diff);
-  END LOOP;
-
-  SELECT stddev(x) INTO sd FROM unnest(unwrapped) AS t(x);
+  -- Shift each value into [m-12, m+12] in one arithmetic step before stddev.
+  SELECT stddev(v - 24.0 * floor(((v - m) + 12.0) / 24.0))
+    INTO sd FROM unnest(vals) AS t(v);
 
   mean := m;
   upper := m + COALESCE(sd, 0);
@@ -59,10 +42,7 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
 
--- ---------------------------------------------------------------------------
--- Rebuild sleep_rolling_stats with bedtime/wake bands.
--- We DROP and recreate because matview columns can't be added in-place.
--- ---------------------------------------------------------------------------
+-- Matview columns can't be added in-place, so drop and recreate.
 DROP TRIGGER IF EXISTS sleep_session_refresh_stats ON sleep_session;
 DROP FUNCTION IF EXISTS refresh_sleep_rolling_stats();
 DROP MATERIALIZED VIEW IF EXISTS sleep_rolling_stats;
@@ -165,7 +145,6 @@ CREATE UNIQUE INDEX sleep_rolling_stats_ux
   ON sleep_rolling_stats (user_id, sleep_day);
 
 
--- Recreate the trigger that keeps the matview in sync on sleep_session changes.
 CREATE OR REPLACE FUNCTION refresh_sleep_rolling_stats()
 RETURNS trigger AS $$
 BEGIN
@@ -179,5 +158,4 @@ AFTER INSERT OR UPDATE OR DELETE ON sleep_session
 FOR EACH STATEMENT
 EXECUTE FUNCTION refresh_sleep_rolling_stats();
 
--- Initial populate (since `WITH NO DATA` not used).
 REFRESH MATERIALIZED VIEW sleep_rolling_stats;
