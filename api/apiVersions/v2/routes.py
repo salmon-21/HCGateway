@@ -46,6 +46,42 @@ def _coerce_time(v):
 _streak_cache = {}
 _STREAK_TTL_SECONDS = 900  # > moromiso 5-min poll → cache hits dominate
 
+# `latest_per_type` cache (steps / distance / kcal max(start_at)). Each
+# table has ~100 ms of TimescaleDB chunk-planning overhead, and serial
+# fetches were the second-largest contributor to /status cache-miss
+# latency. TTL must exceed the moromiso poll interval (5 min) so the
+# cron doesn't permanently sit on the miss path; 15 min matches the
+# streak cache so both expire on the same beat.
+_lastdata_cache = {}
+_LASTDATA_TTL_SECONDS = 900
+
+_LASTDATA_TABLES = (
+    ("steps", "steps", "start_at"),
+    ("distance", "distance", "start_at"),
+    ("totalCaloriesBurned", "total_calories_burned", "start_at"),
+)
+
+
+def _latest_per_type(user_id):
+    cached = _lastdata_cache.get(user_id)
+    now_mono = time.monotonic()
+    if cached and cached[1] > now_mono:
+        return cached[0]
+    result = {}
+    for method, table, col in _LASTDATA_TABLES:
+        try:
+            row = fetch_one(
+                f"SELECT max({col}) AS latest FROM {table} WHERE user_id = %s",
+                (user_id,),
+            )
+        except Exception as e:
+            print(f"  latest({table}) failed: {e}")
+            continue
+        if row and row["latest"]:
+            result[method] = row["latest"]
+    _lastdata_cache[user_id] = (result, now_mono + _LASTDATA_TTL_SECONDS)
+    return result
+
 
 def _heartrate_streak(user_id, tz=STATUS_TZ, max_days=365):
     """Consecutive tz-calendar-days (today inclusive) with heart_rate_sample
@@ -62,9 +98,14 @@ def _heartrate_streak(user_id, tz=STATUS_TZ, max_days=365):
     cutoff = now_local - datetime.timedelta(days=max_days)
 
     try:
+        # heart_rate_hourly (continuous aggregate, ~18k rows) gives the same
+        # day-coverage info as heart_rate_sample (1.4M rows) but at 13× the
+        # speed — distinct-day on the cagg is ~30 ms vs ~470 ms on the raw
+        # samples table. Real-time aggregation keeps today's partial bucket
+        # included.
         rows = fetch_all(
-            "SELECT DISTINCT (time AT TIME ZONE %s)::date AS d "
-            "FROM heart_rate_sample WHERE user_id = %s AND time >= %s",
+            "SELECT DISTINCT (hour AT TIME ZONE %s)::date AS d "
+            "FROM heart_rate_hourly WHERE user_id = %s AND hour >= %s",
             (tz.key, str(user_id), cutoff),
         )
         days_with_data = {r["d"] for r in rows}
@@ -287,17 +328,7 @@ def status():
         user_id = fallback["id"]
 
     try:
-        for method, table in (
-            ("steps", "steps"),
-            ("distance", "distance"),
-            ("totalCaloriesBurned", "total_calories_burned"),
-        ):
-            row = fetch_one(
-                f"SELECT max(start_at) AS latest FROM {table} WHERE user_id = %s",
-                (user_id,),
-            )
-            if row and row["latest"]:
-                latest_per_type[method] = row["latest"]
+        latest_per_type.update(_latest_per_type(user_id))
 
         primary_dt = latest_per_type.get("heartRate")
         if primary_dt:
