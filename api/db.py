@@ -10,12 +10,24 @@ POSTGRES_URI = os.environ["POSTGRES_URI"]
 
 # Pool sized for a single Flask worker with light concurrency. Adjust upward
 # if we move behind gunicorn with multiple workers.
+#
+# `prepare_threshold=0` server-side-prepares every statement on first
+# execute. /status hits 4 hypertables, each costing ~90 ms of TimescaleDB
+# chunk planning per call; with auto-prepare a connection plans once at
+# pool warmup and reuses the plan thereafter (~10 ms per call). This
+# eliminates the slow-cache-miss tail we were patching around with TTL
+# tuning.
+def _configure_conn(conn):
+    conn.prepare_threshold = 0
+
+
 pool = ConnectionPool(
     POSTGRES_URI,
     min_size=1,
     max_size=10,
     open=True,
     timeout=10,
+    configure=_configure_conn,
 )
 
 
