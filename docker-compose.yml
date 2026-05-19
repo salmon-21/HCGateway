@@ -11,20 +11,21 @@ services:
     volumes:
       - ./api/service-account.json:/app/service-account.json
     depends_on:
-      - db
-      - post-process
+      - postgres
 
-  db:
-    image: mongo:4.4.18
+  postgres:
+    image: timescale/timescaledb:latest-pg17
+    container_name: hcgateway_postgres
     restart: always
     ports:
-      - "27017:27017"
-    volumes:
-      - ./db:/data/db
-    container_name: hcgateway_db
+      - "5432:5432"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
+      POSTGRES_USER: hcgateway
+      POSTGRES_PASSWORD: example
+      POSTGRES_DB: hcgateway
+    volumes:
+      - ./pg/data:/var/lib/postgresql/data
+      - ./pg/migrations:/docker-entrypoint-initdb.d:ro
 
   pdc-agent:
     image: grafana/pdc-agent:latest
@@ -39,17 +40,7 @@ services:
       - -gcloud-hosted-grafana-id
       - "887998"
     depends_on:
-      - db
-
-  post-process:
-    build: ./post-process
-    container_name: hcgateway_post
-    restart: always
-    environment:
-      MONGO_URI: mongodb://root:example@db:27017/
-      SYNC_INTERVAL: "180"
-    depends_on:
-      - db
+      - postgres
 
   cloudflared:
     image: cloudflare/cloudflared:latest
