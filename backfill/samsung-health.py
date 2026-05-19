@@ -70,8 +70,16 @@ def parse_sh_time(timestr, offset_str):
 
 
 def read_csv(filename):
-    """Read a Samsung Health CSV, skipping the first metadata line."""
+    """Read a Samsung Health CSV, skipping the first metadata line.
+
+    Returns [] if the file is missing — Samsung Health drops/renames
+    individual exports across versions (e.g. `sleep_combined` was removed
+    in 6.32, `respiratory_rate` and `weight` come and go), so importers
+    can still run end-to-end on partial exports.
+    """
     path = os.path.join(SH_DIR, filename.format(SH_TS=SH_TS))
+    if not os.path.exists(path):
+        return []
     with open(path, encoding='utf-8-sig') as f:
         f.readline()
         return list(csv.DictReader(f))
