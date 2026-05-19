@@ -250,19 +250,20 @@ def status():
     handler_t0 = time.monotonic()
     components = {"api": {"status": "ok"}, "db": {}, "dataSync": {}}
 
-    # Pick the user with the freshest heart_rate_sample. Doing it this way
-    # (instead of `SELECT id FROM users LIMIT 1`) handles multi-user setups
-    # where some rows in `users` are empty/test accounts — the order of an
-    # unqualified LIMIT 1 is undefined and historically returned the wrong
-    # account here.
+    # Pick user_id from the freshest heart_rate_sample row.
+    # `SELECT max(time)` benefits from TimescaleDB's per-chunk index lookup
+    # (single chunk, ~5ms). `ORDER BY ... LIMIT 1` here planned to a parallel
+    # seq scan across all 100+ chunks, which dwarfed the gain.
+    # The follow-up `WHERE time = max` also stays on the latest chunk.
     user_id = None
     latest_per_type = {}
     try:
         t0 = time.time()
         row = fetch_one(
-            "SELECT user_id::text AS user_id, max(time) AS latest "
-            "FROM heart_rate_sample GROUP BY user_id "
-            "ORDER BY max(time) DESC NULLS LAST LIMIT 1"
+            "SELECT user_id::text AS user_id, time AS latest "
+            "FROM heart_rate_sample "
+            "WHERE time = (SELECT max(time) FROM heart_rate_sample) "
+            "LIMIT 1"
         )
         ms = int((time.time() - t0) * 1000)
         components["db"] = {"status": "ok", "responseMs": ms}
