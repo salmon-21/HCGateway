@@ -111,15 +111,42 @@ class HealthConnectRepository @Inject constructor(
 
     suspend fun getChangesToken(): String {
         val client = healthConnectClient ?: throw IllegalStateException("Health Connect not available")
-        // Only request changes for record types that Health Connect supports on this device.
-        // Unsupported types (e.g. MindfulnessSession) cause SecurityException.
+        // Only request changes for record types Health Connect grants permission for.
+        // Some types (e.g. MindfulnessSession) cause SecurityException even when not requested.
         val granted = client.permissionController.getGrantedPermissions()
-        val supportedTypes = RECORD_TYPES.filter { type ->
+        var supportedTypes = RECORD_TYPES.filter { type ->
             val perm = HealthPermission.getReadPermission(type.recordClass)
             perm in granted
-        }.map { it.recordClass }.toSet()
-        val request = ChangesTokenRequest(recordTypes = supportedTypes)
-        return client.getChangesToken(request)
+        }.map { it.recordClass }.toMutableSet()
+
+        // Samsung Health Connect occasionally rejects a granted record type at
+        // getChangesToken() time even though getGrantedPermissions() lists it.
+        // The exception message names the offending Record class; drop it and
+        // retry. Cap retries to the number of supported types so we cannot loop
+        // forever if every type is rejected.
+        repeat(supportedTypes.size) {
+            try {
+                val request = ChangesTokenRequest(recordTypes = supportedTypes)
+                return client.getChangesToken(request)
+            } catch (e: SecurityException) {
+                val offender = extractRejectedRecordClass(e.message, supportedTypes)
+                if (offender == null) throw e
+                Timber.w("getChangesToken: dropping ${offender.simpleName} (Samsung rejection)")
+                supportedTypes.remove(offender)
+                if (supportedTypes.isEmpty()) throw e
+            }
+        }
+        throw IllegalStateException("getChangesToken exhausted retries")
+    }
+
+    private fun extractRejectedRecordClass(
+        message: String?,
+        candidates: Set<KClass<out Record>>,
+    ): KClass<out Record>? {
+        if (message == null) return null
+        return candidates.firstOrNull { c ->
+            c.simpleName?.let { name -> message.contains(name) } == true
+        }
     }
 
     data class ChangeResult(
