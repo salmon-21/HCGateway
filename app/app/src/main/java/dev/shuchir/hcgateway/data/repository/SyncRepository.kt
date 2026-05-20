@@ -216,12 +216,19 @@ class SyncRepository @Inject constructor(
             }.awaitAll()
         }
 
-        try {
-            val token = healthConnectRepository.getChangesToken()
-            preferencesRepository.updateChangesToken(token)
-            Timber.i("Changes token saved")
-        } catch (e: Exception) {
-            Timber.e(e, "Failed to save changes token")
+        // Only refresh the token when every supported type succeeded. If we
+        // refresh after a partial failure, the next delta sync will believe
+        // those records are already uploaded and skip them.
+        if (failedTypes.isEmpty()) {
+            try {
+                val token = healthConnectRepository.getChangesToken()
+                preferencesRepository.updateChangesToken(token)
+                Timber.i("Changes token saved")
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to save changes token")
+            }
+        } else {
+            Timber.w("Skipping changes token update: ${failedTypes.size} types failed (${failedTypes.joinToString()})")
         }
 
         return totalRecordsAtomic.get()
@@ -260,8 +267,16 @@ class SyncRepository @Inject constructor(
                             synchronized(typeResults) {
                                 typeResults.add(TypeSyncResult(typeName, records.size))
                             }
-                        } catch (_: Exception) {
-                            synchronized(failedTypes) { failedTypes.add(typeName) }
+                        } catch (e: Exception) {
+                            val isUnsupported = e is SecurityException ||
+                                e.cause is SecurityException ||
+                                e.message?.contains("SecurityException") == true
+                            if (!isUnsupported) {
+                                Timber.e(e, "$typeName failed")
+                                synchronized(failedTypes) { failedTypes.add(typeName) }
+                            } else {
+                                Timber.i("$typeName: skipped (unsupported)")
+                            }
                         }
                     }
                     val done = completed.incrementAndGet()
@@ -274,8 +289,12 @@ class SyncRepository @Inject constructor(
 
         totalRecords = totalRecordsAtomic.get()
 
-        if (result.nextToken.isNotBlank()) {
+        // Only advance the token when every supported type succeeded — partial
+        // failures must be retried on the next delta sync, not silently dropped.
+        if (result.nextToken.isNotBlank() && failedTypes.isEmpty()) {
             preferencesRepository.updateChangesToken(result.nextToken)
+        } else if (failedTypes.isNotEmpty()) {
+            Timber.w("Skipping changes token update: ${failedTypes.size} types failed (${failedTypes.joinToString()})")
         }
 
         return totalRecords
