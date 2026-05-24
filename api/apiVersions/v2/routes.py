@@ -262,8 +262,8 @@ def status():
         # response shape stable; verdict will be "unknown".
         fallback = fetch_one("SELECT id::text AS id FROM users ORDER BY id LIMIT 1")
         if not fallback:
-            components["dataSync"] = {"status": "unknown"}
-            components["api"]["responseMs"] = int((time.monotonic() - handler_t0) * 1000)
+            components["dataSync"] = {"status": "unknown", "reason": "no_users"}
+            components["api"]["handlerMs"] = int((time.monotonic() - handler_t0) * 1000)
             return jsonify({
                 "components": components,
                 "checkedAt": datetime.datetime.now(STATUS_TZ).isoformat(),
@@ -297,11 +297,11 @@ def status():
                 "lastDataPerType": {k: v.isoformat() for k, v in latest_per_type.items()},
             }
         else:
-            components["dataSync"] = {"status": "unknown"}
+            components["dataSync"] = {"status": "unknown", "reason": "no_heart_rate_data"}
     except Exception:
-        components["dataSync"] = {"status": "down"}
+        components["dataSync"] = {"status": "down", "reason": "query_failed"}
 
-    components["api"]["responseMs"] = int((time.monotonic() - handler_t0) * 1000)
+    components["api"]["handlerMs"] = int((time.monotonic() - handler_t0) * 1000)
     return jsonify({
         "components": components,
         "checkedAt": datetime.datetime.now(STATUS_TZ).isoformat(),
@@ -382,11 +382,11 @@ def _insert_samples(conn, schema, user_id, items):
                 (source_ids,),
             )
         if rows:
-            placeholders = ",".join(["%s"] * len(cols))
-            cur.executemany(
-                f"INSERT INTO {table} ({','.join(cols)}) VALUES ({placeholders})",
-                rows,
-            )
+            # COPY beats executemany by ~20x for the high-volume sample tables.
+            # The preceding DELETE clears conflicts, so no ON CONFLICT is needed.
+            with cur.copy(f"COPY {table} ({','.join(cols)}) FROM STDIN") as copy:
+                for r in rows:
+                    copy.write_row(r)
     return len(rows), skipped
 
 
@@ -445,42 +445,64 @@ def _insert_records(conn, schema, user_id, items):
     if not rows:
         return 0, skipped
 
+    # De-dup within the batch by conflict key (last wins). A single multi-row
+    # INSERT errors if two VALUES rows share a conflict key ("cannot affect row
+    # a second time"); per-statement executemany tolerated it implicitly.
+    key_cols = ("start_at", "id") if is_hyper else ("id",)
+    deduped = {}
+    for r in rows:
+        deduped[tuple(r[k] for k in key_cols)] = r
+    rows = list(deduped.values())
+
     cols = list(rows[0].keys())
     conflict = "(start_at, id)" if is_hyper else "(id)"
     updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("id", "start_at"))
-    placeholders = ",".join(["%s"] * len(cols))
+    row_ph = "(" + ",".join(["%s"] * len(cols)) + ")"
+    # One statement for the whole batch: the AFTER-STATEMENT matview-refresh
+    # trigger on sleep_session then fires once per /sync, not once per row.
     sql = (
-        f"INSERT INTO {table} ({','.join(cols)}) VALUES ({placeholders}) "
+        f"INSERT INTO {table} ({','.join(cols)}) "
+        f"VALUES {','.join([row_ph] * len(rows))} "
         f"ON CONFLICT {conflict} DO UPDATE SET {updates}"
     )
+    params = [r[c] for r in rows for c in cols]
     with conn.cursor() as cur:
-        cur.executemany(sql, [[r[c] for c in cols] for r in rows])
+        cur.execute(sql, params)
     return len(rows), skipped
 
 
 @v2.post("/sync/<method>")
 def sync(method):
+    t0 = time.monotonic()
     norm, schema = normalize_method(method)
     if schema is None:
         return jsonify({'error': f'unknown method: {method}'}), 400
-    if not request.json or "data" not in request.json:
+
+    body = request.json  # first access triggers JSON parse
+    t_parse = time.monotonic()
+    if not body or "data" not in body:
         return jsonify({'error': 'no data provided'}), 400
 
-    data = request.json["data"]
+    data = body["data"]
     if not isinstance(data, list):
         data = [data]
-    print(f"{norm}: {len(data)} records", flush=True)
 
     try:
         with pool.connection() as conn:
+            t_conn = time.monotonic()
             if schema["kind"] == "samples":
                 written, skipped = _insert_samples(conn, schema, g.user, data)
             else:
                 written, skipped = _insert_records(conn, schema, g.user, data)
+        t_done = time.monotonic()
     except Exception as e:
         print(f"sync {norm} failed: {e}", flush=True)
         return jsonify({'error': str(e)}), 500
 
+    print(f"{norm}: {written} records "
+          f"parse={int((t_parse - t0) * 1000)}ms "
+          f"insert={int((t_done - t_conn) * 1000)}ms "
+          f"total={int((t_done - t0) * 1000)}ms", flush=True)
     return jsonify({'success': True, 'count': written, 'skipped': skipped}), 200
 
 

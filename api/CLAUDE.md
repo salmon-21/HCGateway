@@ -33,9 +33,10 @@ User `id` is `uuid` (PG-generated). The legacy Mongo ObjectId-as-string scheme w
 
 ## /api/v2/status semantics
 
-- `components.api.responseMs` — handler's self-measured wall time (int ms).
-- `components.db` — `max(time) FROM heart_rate_sample` latency probe; `{status, responseMs}`.
+- `components.api.handlerMs` — handler's self-measured wall time (int ms). End-to-end RTT (Worker → API → Worker) is injected as `components.api.responseMs` by the moromiso Worker at pull time; the handler itself never emits `responseMs`.
+- `components.db` — `max(time) FROM heart_rate_sample` latency probe; `{status, responseMs}`. Handler-internal measurement of the single query, not an RTT.
 - `components.dataSync.status` — based on `heart_rate_sample` freshness only: `<12h ok / <24h degraded / else down / unknown`. Other realtime tables (`steps`, `distance`, `total_calories_burned`) appear in `lastDataPerType` for debug but don't drive the verdict.
+- `components.dataSync.reason` — present only when `status` is `unknown` or `down`. Codes: `no_users` (users table empty), `no_heart_rate_data` (no heart_rate_sample rows), `query_failed` (exception during freshness probe). Consumed by the moromiso Worker for human-readable detail labels.
 - `components.dataSync.streak` — consecutive `STATUS_TZ`-calendar-days (today inclusive) with heart_rate data, capped at 365. Cached per (user_id, tz) for 900 s.
 - `STATUS_TZ` (env, default `UTC`) — calendar-day boundaries + `checkedAt` timezone. Must match the consumer's notion of "today".
 - 12h/24h threshold math is timezone-invariant (tz-aware delta).
