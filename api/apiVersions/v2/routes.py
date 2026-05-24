@@ -25,6 +25,11 @@ ph = PasswordHasher()
 # same notion of "today". Threshold math (12h/24h staleness) is tz-invariant.
 STATUS_TZ = ZoneInfo(os.environ.get("STATUS_TZ", "UTC"))
 
+# /sync logs only the terse "{method}: {n} records" line below this; at or above
+# it, the parse/insert/total breakdown is logged so a perf regression surfaces on
+# its own. Normal delta syncs are well under it; only full-sync-scale batches trip.
+SLOW_SYNC_MS = 1000
+
 v2 = Blueprint('v2', __name__, url_prefix='/api/v2/')
 
 
@@ -499,10 +504,14 @@ def sync(method):
         print(f"sync {norm} failed: {e}", flush=True)
         return jsonify({'error': str(e)}), 500
 
-    print(f"{norm}: {written} records "
-          f"parse={int((t_parse - t0) * 1000)}ms "
-          f"insert={int((t_done - t_conn) * 1000)}ms "
-          f"total={int((t_done - t0) * 1000)}ms", flush=True)
+    total_ms = int((t_done - t0) * 1000)
+    if total_ms > SLOW_SYNC_MS:
+        print(f"{norm}: {written} records "
+              f"parse={int((t_parse - t0) * 1000)}ms "
+              f"insert={int((t_done - t_conn) * 1000)}ms "
+              f"total={total_ms}ms", flush=True)
+    else:
+        print(f"{norm}: {written} records", flush=True)
     return jsonify({'success': True, 'count': written, 'skipped': skipped}), 200
 
 
