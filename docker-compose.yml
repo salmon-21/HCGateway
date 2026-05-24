@@ -7,7 +7,7 @@ services:
     env_file:
       - ./api/.env
     container_name: hcgateway_api
-    restart: always
+    restart: unless-stopped
     volumes:
       - ./api/service-account.json:/app/service-account.json
     depends_on:
@@ -16,7 +16,7 @@ services:
   postgres:
     image: timescale/timescaledb:latest-pg17
     container_name: hcgateway_postgres
-    restart: always
+    restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
@@ -30,7 +30,7 @@ services:
   pdc-agent:
     image: grafana/pdc-agent:latest
     container_name: hcgateway_pdc
-    restart: always
+    restart: unless-stopped
     network_mode: host
     command:
       - -token
@@ -45,7 +45,7 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: hcgateway_cloudflared
-    restart: always
+    restart: unless-stopped
     profiles: ["tunnel"]
     command: tunnel --no-autoupdate run
     environment:
