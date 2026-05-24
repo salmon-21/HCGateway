@@ -9,6 +9,15 @@ plugins {
     alias(libs.plugins.sentry)
 }
 
+// versionCode auto-derives from the git commit count so it bumps every commit —
+// each build is a distinct Sentry release without manual edits. Falls back to 1
+// when git is unavailable (e.g. shallow CI checkout or source-only export).
+val gitCommitCount: Int = runCatching {
+    providers.exec {
+        commandLine("git", "rev-list", "--count", "HEAD")
+    }.standardOutput.asText.get().trim().toInt()
+}.getOrDefault(1)
+
 android {
     namespace = "dev.shuchir.hcgateway"
     compileSdk = 36
@@ -17,8 +26,8 @@ android {
         applicationId = "dev.shuchir.hcgateway"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "2.0.0"
+        versionCode = gitCommitCount
+        versionName = "3.0.0"
     }
 
     buildTypes {
