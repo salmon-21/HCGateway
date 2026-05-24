@@ -159,12 +159,15 @@
             android:authorities="${applicationId}.androidx-startup"
             tools:node="remove" />
 
+        <!-- Sentry is opt-in: auto-init is off so the SDK starts only when the user
+             enables error reporting (HCGatewayApp.initSentry). The DSN is a public
+             client key, safe to commit. Screenshot/trace meta-data the wizard adds is
+             intentionally omitted (PII risk / traces unused). -->
+        <meta-data android:name="io.sentry.auto-init" android:value="false" />
         <meta-data
             android:name="io.sentry.dsn"
-            android:value="https://e4a201b96ea602d28e90b5e4bbe67aa6@sentry.shuchir.dev/6" />
-        <meta-data
-            android:name="io.sentry.traces.sample-rate"
-            android:value="1.0" />
+            android:value="https://d7b354e99711359f1fa6ca0af508767b@o4511445352054784.ingest.us.sentry.io/4511445367783424" />
+        <meta-data android:name="io.sentry.environment" android:value="${sentryEnvironment}" />
 
     </application>
 </manifest>

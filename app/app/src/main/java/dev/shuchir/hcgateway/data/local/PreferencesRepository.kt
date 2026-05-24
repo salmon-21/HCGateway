@@ -23,7 +23,7 @@ class PreferencesRepository @Inject constructor(
             fullSyncMode = prefs[UserPreferences.FULL_SYNC_MODE] ?: false,
             lastSync = prefs[UserPreferences.LAST_SYNC] ?: 0L,
             changesToken = prefs[UserPreferences.CHANGES_TOKEN] ?: "",
-            sentryEnabled = prefs[UserPreferences.SENTRY_ENABLED] ?: true,
+            sentryEnabled = prefs[UserPreferences.SENTRY_ENABLED] ?: false,
             fcmToken = prefs[UserPreferences.FCM_TOKEN] ?: "",
             useHttps = prefs[UserPreferences.USE_HTTPS] ?: true,
             lastSyncResults = prefs[UserPreferences.LAST_SYNC_RESULTS] ?: "",

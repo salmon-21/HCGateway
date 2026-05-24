@@ -12,6 +12,7 @@ workmanager = "2.10.0"
 health-connect = "1.1.0"
 firebase-bom = "33.7.0"
 sentry = "7.19.0"
+sentry-plugin = "6.8.1"
 navigation = "2.8.5"
 lifecycle = "2.8.7"
 ksp = "2.1.20-1.0.31"
@@ -87,3 +88,4 @@ hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 google-services = { id = "com.google.gms.google-services", version = "4.4.2" }
 aboutlibraries = { id = "com.mikepenz.aboutlibraries.plugin", version = "11.6.3" }
+sentry = { id = "io.sentry.android.gradle", version.ref = "sentry-plugin" }

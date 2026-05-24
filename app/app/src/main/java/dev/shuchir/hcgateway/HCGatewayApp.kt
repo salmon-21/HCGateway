@@ -41,16 +41,13 @@ class HCGatewayApp : Application(), Configuration.Provider {
         }
     }
 
+    // Sentry auto-init is disabled in the manifest; we init here only when the
+    // user opts in, so no telemetry (errors or sessions) leaves the device
+    // unless reporting is enabled. DSN and other defaults come from the manifest.
     private fun initSentry() {
         CoroutineScope(Dispatchers.IO).launch {
-            val enabled = preferencesRepository.settings.first().sentryEnabled
-            val dsn = applicationInfo.metaData?.getString("io.sentry.dsn")
-            if (enabled && !dsn.isNullOrBlank()) {
-                SentryAndroid.init(this@HCGatewayApp) { options ->
-                    options.dsn = dsn
-                    options.tracesSampleRate = 0.1
-                }
-            }
+            if (!preferencesRepository.settings.first().sentryEnabled) return@launch
+            SentryAndroid.init(this@HCGatewayApp)
         }
     }
 
