@@ -77,3 +77,6 @@ service-account.json
 /pg/data/
 /pg/backups/
 /.cocoindex_code/
+
+# Local tooling (Claude Code settings, worktrees)
+/.claude/
