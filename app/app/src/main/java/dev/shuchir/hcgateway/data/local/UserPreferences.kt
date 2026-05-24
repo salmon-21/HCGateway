@@ -34,7 +34,7 @@ data class UserSettings(
     val fullSyncMode: Boolean = false,
     val lastSync: Long = 0L,
     val changesToken: String = "",
-    val sentryEnabled: Boolean = true,
+    val sentryEnabled: Boolean = false,
     val fcmToken: String = "",
     val useHttps: Boolean = true,
     val lastSyncResults: String = "", // JSON

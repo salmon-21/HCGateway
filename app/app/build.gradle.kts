@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
     alias(libs.plugins.aboutlibraries)
+    alias(libs.plugins.sentry)
 }
 
 android {
@@ -28,9 +29,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Drives io.sentry.environment in the manifest so it's set before the
+            // SDK starts session tracking (later than options.environment in code).
+            manifestPlaceholders["sentryEnvironment"] = "production"
         }
         debug {
             signingConfig = signingConfigs.getByName("debug")
+            manifestPlaceholders["sentryEnvironment"] = "debug"
         }
     }
 
@@ -129,4 +134,16 @@ tasks.whenTaskAdded {
 tasks.register<Exec>("launchDebug") {
     commandLine("adb", "shell", "am", "start", "-n", "dev.shuchir.hcgateway/.MainActivity")
     isIgnoreExitValue = true
+}
+
+sentry {
+    org.set("salmon21")
+    projectName.set("hcgateway")
+
+    // Upload source context so stack traces show source code.
+    includeSourceContext.set(true)
+
+    // Skip the plugin's build-time work (mapping + source upload, which needs the
+    // auth token) on debug builds — only release is minified and worth symbolicating.
+    ignoredBuildTypes.set(setOf("debug"))
 }

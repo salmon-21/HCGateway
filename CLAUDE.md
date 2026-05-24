@@ -1,83 +1,42 @@
-# HCGateway Development Guide
+# HCGateway
 
-## Project Overview
+Android app (Jetpack Compose + Kotlin, Hilt, MVVM) under `app/` that syncs Health Connect data to a self-hosted Flask API under `api/`.
 
-Android app (Jetpack Compose + Kotlin) that syncs Health Connect data to a self-hosted API server.
+See @README.md for the project overview. Dependencies live in `app/gradle/libs.versions.toml`.
 
-## Architecture
+## Build
 
-- **Android app**: `app/` — Jetpack Compose, Kotlin, Hilt DI, MVVM
-- **API server**: `api/` — Python Flask
+- **Build & install**: `./gradlew installDebug` (from `app/`, auto-launches the app)
+- **Clean build**: `./gradlew clean installDebug` — needed when code changes aren't reflected (`installDebug` may use cached artifacts)
+- Requires a connected Android device with Health Connect installed.
 
-### App Structure
+## Design decisions (non-obvious)
 
-```
-app/app/src/main/java/dev/shuchir/hcgateway/
-  HCGatewayApp.kt              # @HiltAndroidApp, Sentry init, theme init
-  MainActivity.kt              # AppCompatActivity, single activity
+- **Theme switching** uses `AppCompatDelegate`, not Compose state — instant, no recomposition delay.
+- **OkHttp AuthInterceptor** auto-refreshes on **403** (this API returns 403, not 401).
+- **Streaming sync**: `readRecordsPaged` feeds a Channel pipeline so reads and uploads overlap and memory stays bounded.
+- **Idle notification** uses `NotificationManager.notify()` directly, *not* a foreground service — avoids Android 15's 6-hour `dataSync` foreground limit.
+- **Reading data older than 30 days** requires `PERMISSION_READ_HEALTH_DATA_HISTORY`.
+- **UI** targets M3 Expressive (wavy progress, spring motion, expressive shapes).
+- **Sentry is opt-in**: `io.sentry.auto-init=false` in the manifest, so `HCGatewayApp.initSentry` starts the SDK only when the in-app toggle (`sentryEnabled`) is on — gating both errors and Release Health sessions. DSN and `io.sentry.environment` are manifest meta-data (the latter from the `sentryEnvironment` manifestPlaceholder per buildType) so they're set before auto session tracking begins — setting `environment` only in `options` is too late and sessions get tagged `production`. The DSN is a public client key, safe to commit. The Sentry Gradle plugin uploads mappings/source on **release only** (`ignoredBuildTypes = ["debug"]`); its auth token lives in the gitignored `app/sentry.properties`.
 
-  di/                           # Hilt modules (AppModule, HealthConnectModule)
-  data/
-    local/                      # DataStore preferences
-    remote/                     # Retrofit API, auth interceptors
-    repository/                 # Auth, Sync, HealthConnect, NetworkMonitor
-  domain/model/                 # RecordTypes, SyncState
-  ui/
-    theme/                      # Material You + custom colors (success)
-    navigation/                 # NavGraph with material-motion transitions
-    home/                       # Sync screen (HomeScreen, HomeViewModel)
-    login/                      # Login screen
-    settings/                   # Settings, Licenses screens
-    onboarding/                 # Permission onboarding
-    components/                 # FilledCard, SyncWarningDialog
-  worker/                       # SyncWorker, SyncScheduler, BootReceiver, PersistentSyncService
-  fcm/                          # Firebase Cloud Messaging
-```
+## Sync
 
-### Key Dependencies
-
-- Compose BOM 2026.02.00, Material 3 1.5.0-alpha15 (M3 Expressive)
-- Hilt, Retrofit + OkHttp, DataStore, WorkManager
-- Health Connect Client 1.1.0 (stable), 41 record types
-- Firebase Messaging, Sentry
-- material-motion-compose-core (Shared Axis X transitions)
-- aboutlibraries-core (license metadata)
-
-## Development Setup
-
-- **Build & install**: `./gradlew installDebug` (auto-launches app)
-- **Clean build**: `./gradlew clean installDebug` (when APK changes not reflected)
-- **Device required**: Android device with Health Connect
-- **Gradle**: 9.4.0, AGP 8.10.1, Kotlin 2.1.20
-
-## Key Design Decisions
-
-- **AppCompatDelegate** for theme switching (instant, no Compose delay)
-- **OkHttp AuthInterceptor** handles 403 auto-refresh (API returns 403 not 401)
-- **Changes API** for incremental sync (delta only)
-- **Streaming sync** via `readRecordsPaged` + Channel pipeline (read/upload overlap)
-- **PersistentSyncService** for always-on notification with next sync time + cancel button
-- **M3 Expressive**: wavy progress, loading indicator, button shapes, spring motion
-- **PERMISSION_READ_HEALTH_DATA_HISTORY** for reading data older than 30 days
-
-## Sync Architecture
-
-- **fullSync**: All 41 types in parallel via `async(Dispatchers.IO)`, each type streams pages (1000 records) through a Channel — reader produces, consumer uploads. Memory bounded.
-- **deltaSync**: Uses Changes API token to sync only modified records since last sync.
-- **Cancel**: `@Volatile cancelled` flag prevents async coroutines from overwriting Cancelled state. `ensureActive()` checks in reader/consumer loops.
-- **Force Sync**: Date range picker, consumes Changes API token on completion to clear New counts.
-- **WorkManager**: Periodic sync with 75% interval guard to prevent duplicate sync on foreground resume. Minimum interval is 15 minutes (WorkManager constraint). No foreground service for idle notification — `SyncNotificationManager` uses `NotificationManager.notify()` directly to avoid Android 15's 6-hour `dataSync` foreground service limit.
+- **fullSync**: all record types in parallel via `async(Dispatchers.IO)`; each streams pages of 1000 records through a Channel.
+- **deltaSync**: uses a Changes API token to sync only records modified since last sync.
+- **Cancel**: a `@Volatile cancelled` flag stops async coroutines from overwriting the Cancelled state; reader/consumer loops call `ensureActive()`.
+- **Force Sync**: date-range picker; consumes the Changes API token on completion to clear New counts.
+- **WorkManager**: periodic sync with a 75% interval guard against duplicate runs on foreground resume. Minimum interval is 15 min (WorkManager constraint).
 
 ## Gotchas
 
-- **MindfulnessSession (record type 41)** is experimental and unsupported on Samsung devices. Including it in `ChangesTokenRequest` causes `SecurityException` that silently blocks token persistence. Filter unsupported types by checking `getGrantedPermissions()`.
-- **Samsung Health** writes to Health Connect in ~1 hour batches, not real-time.
-- **Process recreation**: Android may kill the app process in background. ViewModels reset, `_serverCounts` becomes null. Don't assume in-memory state persists.
-- **`LinearWavyProgressIndicator` amplitude**: The M3 component applies its own internal spring animation to amplitude changes, making external dynamic values unresponsive. Use fixed values.
-- **APK not reflected after build**: `./gradlew installDebug` may use cached artifacts. Run `./gradlew clean installDebug` when code changes don't take effect.
-- **logcat process ID changes**: After reinstall or process recreation, the PID changes. Always check the PID in logcat output matches the current app process.
-- **Adding a new record type** requires 4 files: `RecordTypes.kt` (type info), `RecordSerializer.kt` (serialization), `AndroidManifest.xml` (READ/WRITE permissions), and `HealthConnectRepository.kt` (getChangesToken filter if experimental).
+- **MindfulnessSession** is experimental and unsupported on Samsung. Including it in a `ChangesTokenRequest` throws a `SecurityException` that silently blocks token persistence — filter unsupported types via `getGrantedPermissions()`.
+- **Samsung Health** writes to Health Connect in ~1-hour batches, not real-time.
+- **Process recreation**: Android may kill the background process; ViewModels reset and in-memory state (e.g. `_serverCounts`) becomes null. Don't assume it persists.
+- **`LinearWavyProgressIndicator` amplitude**: the M3 component runs its own internal spring on amplitude, so external dynamic values don't take effect — use fixed values.
+- **logcat PID changes** after reinstall or process recreation — confirm the PID matches the current process.
+- **Adding a record type** touches 4 files: `RecordTypes.kt`, `RecordSerializer.kt`, `AndroidManifest.xml` (READ/WRITE permissions), and `HealthConnectRepository.kt` (getChangesToken filter if experimental).
 
 ## Conventions
 
-- Keep responses concise
+- Keep responses concise.
