@@ -12,6 +12,7 @@ import androidx.health.connect.client.time.TimeRangeFilter
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import dev.shuchir.hcgateway.domain.model.RECORD_TYPES
+import kotlinx.coroutines.CancellationException
 import timber.log.Timber
 import java.time.Instant
 import javax.inject.Inject
@@ -181,6 +182,10 @@ class HealthConnectRepository @Inject constructor(
                 hasMore = response.hasMore
                 currentToken = response.nextChangesToken
             }
+        } catch (e: CancellationException) {
+            // Cancellation must not be misread as an expired token (its message could
+            // contain "token") — rethrow so the sync cancels cleanly.
+            throw e
         } catch (e: Exception) {
             if (e.message?.contains("token", ignoreCase = true) == true) {
                 return ChangeResult(emptyMap(), "", false, tokenExpired = true)

@@ -20,7 +20,10 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import retrofit2.HttpException
+import retrofit2.Response
 import timber.log.Timber
+import java.io.IOException
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -48,9 +51,10 @@ class SyncRepository @Inject constructor(
 
     val isSyncing: Boolean get() = syncJob?.isActive == true
 
-    suspend fun sync(customStartDate: LocalDate? = null, customEndDate: LocalDate? = null) {
-        if (isSyncing) return
-        performSync(customStartDate, customEndDate)
+    /** Returns true if the sync succeeded (or was skipped); false if it failed and is worth retrying. */
+    suspend fun sync(customStartDate: LocalDate? = null, customEndDate: LocalDate? = null): Boolean {
+        if (isSyncing) return true
+        return performSync(customStartDate, customEndDate)
     }
 
     @Volatile
@@ -71,13 +75,42 @@ class SyncRepository @Inject constructor(
         if (!cancelled) _syncState.value = state
     }
 
-    private suspend fun performSync(customStartDate: LocalDate?, customEndDate: LocalDate?) {
+    // Retrofit returns a non-2xx Response without throwing, so an HTTP error would
+    // otherwise be silently treated as a successful upload — advancing the changes
+    // token and dropping records the server never stored. Surface it as an exception
+    // so the per-type catch marks the type failed and holds the token.
+    private fun Response<Unit>.orThrow() {
+        if (!isSuccessful) throw HttpException(this)
+    }
+
+    // SecurityException = the type isn't granted/supported by Health Connect, so skip it
+    // quietly rather than counting it as a failure.
+    private fun Throwable.isUnsupportedType(): Boolean =
+        this is SecurityException || cause is SecurityException ||
+            message?.contains("SecurityException") == true
+
+    // Connectivity drops and server-side (5xx) errors are transient and retriable —
+    // log at warn so they don't pollute Sentry. Client errors (4xx) are real bugs.
+    private fun Throwable.isTransientFailure(): Boolean =
+        this is IOException || (this is HttpException && code() >= 500)
+
+    // Records a per-type sync failure: warn for transient causes, error otherwise.
+    private fun logTypeFailure(typeName: String, e: Throwable, failedTypes: MutableList<String>) {
+        if (e.isTransientFailure()) {
+            Timber.w(e, "$typeName failed (transient)")
+        } else {
+            Timber.e(e, "$typeName failed")
+        }
+        synchronized(failedTypes) { failedTypes.add(typeName) }
+    }
+
+    private suspend fun performSync(customStartDate: LocalDate?, customEndDate: LocalDate?): Boolean {
         cancelled = false
 
         if (!healthConnectRepository.hasAllPermissions()) {
             Timber.i("Sync skipped: Health Connect permissions not granted")
             _syncState.value = SyncState.Idle
-            return
+            return true
         }
 
         _syncState.value = SyncState.Syncing("", 0, RECORD_TYPES.size)
@@ -123,6 +156,7 @@ class SyncRepository @Inject constructor(
             val totalElapsed = System.currentTimeMillis() - syncStartTime
             Timber.i("Sync done: $totalRecords records in ${totalElapsed}ms, ${failedTypes.size} failed")
             _syncState.value = SyncState.Done(totalRecords, typeResults, failedTypes)
+            return true
         } catch (e: CancellationException) {
             Timber.i("Sync cancelled")
             if (typeResults.isNotEmpty()) {
@@ -130,8 +164,15 @@ class SyncRepository @Inject constructor(
             }
             throw e
         } catch (e: Exception) {
-            Timber.e(e, "Sync error")
+            // Transient connectivity / server (5xx) failures are normal and retriable —
+            // log at warn so they don't pollute Sentry. Everything else is a real error.
+            if (e.isTransientFailure()) {
+                Timber.w(e, "Sync error (transient)")
+            } else {
+                Timber.e(e, "Sync error")
+            }
             _syncState.value = SyncState.Error(e.message ?: "Sync failed")
+            return false
         }
     }
 
@@ -179,7 +220,7 @@ class SyncRepository @Inject constructor(
                         // Consumer: upload pages to API server
                         for ((json, pageSize) in channel) {
                             coroutineContext.ensureActive()
-                            apiService.syncRecords(type.name, SyncRequest(json))
+                            apiService.syncRecords(type.name, SyncRequest(json)).orThrow()
                             val synced = totalRecordsAtomic.addAndGet(pageSize)
                             currentRecordCount = synced
                             updateSyncState(SyncState.Syncing(
@@ -196,16 +237,15 @@ class SyncRepository @Inject constructor(
                                 typeResults.add(TypeSyncResult(type.name, typeTotal))
                             }
                         }
+                    } catch (e: CancellationException) {
+                        // Cancellation isn't a type failure — rethrow so it propagates to
+                        // awaitAll() instead of being logged as an error and marked failed.
+                        throw e
                     } catch (e: Exception) {
-                        // Skip unsupported types (SecurityException = no permission granted by HC)
-                        val isUnsupported = e is SecurityException ||
-                            e.cause is SecurityException ||
-                            e.message?.contains("SecurityException") == true
-                        if (!isUnsupported) {
-                            Timber.e(e, "${type.name} failed")
-                            synchronized(failedTypes) { failedTypes.add(type.name) }
-                        } else {
+                        if (e.isUnsupportedType()) {
                             Timber.i("${type.name}: skipped (unsupported)")
+                        } else {
+                            logTypeFailure(type.name, e, failedTypes)
                         }
                     }
                     val done = completed.incrementAndGet()
@@ -261,21 +301,19 @@ class SyncRepository @Inject constructor(
                     if (records.isNotEmpty()) {
                         try {
                             val json = healthConnectRepository.recordsToJson(records)
-                            apiService.syncRecords(typeName, SyncRequest(json))
+                            apiService.syncRecords(typeName, SyncRequest(json)).orThrow()
                             totalRecordsAtomic.addAndGet(records.size)
                             currentRecordCount = totalRecordsAtomic.get()
                             synchronized(typeResults) {
                                 typeResults.add(TypeSyncResult(typeName, records.size))
                             }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (e: Exception) {
-                            val isUnsupported = e is SecurityException ||
-                                e.cause is SecurityException ||
-                                e.message?.contains("SecurityException") == true
-                            if (!isUnsupported) {
-                                Timber.e(e, "$typeName failed")
-                                synchronized(failedTypes) { failedTypes.add(typeName) }
-                            } else {
+                            if (e.isUnsupportedType()) {
                                 Timber.i("$typeName: skipped (unsupported)")
+                            } else {
+                                logTypeFailure(typeName, e, failedTypes)
                             }
                         }
                     }
