@@ -14,6 +14,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dev.shuchir.hcgateway.R
 import dev.shuchir.hcgateway.data.repository.SyncRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import timber.log.Timber
 
@@ -46,9 +47,19 @@ class SyncWorker @AssistedInject constructor(
         }
 
         return try {
-            syncRepository.sync()
-            Timber.i("Sync completed")
-            Result.success()
+            if (syncRepository.sync()) {
+                Timber.i("Sync completed")
+                Result.success()
+            } else {
+                // sync() swallowed a failure (logged it already) and reported it via
+                // syncState — ask WorkManager to retry with backoff.
+                Result.retry()
+            }
+        } catch (e: CancellationException) {
+            // Normal control flow (user cancelled or WorkManager stopped the job) —
+            // rethrow so the cancellation propagates instead of being reported as a crash.
+            Timber.i("Sync cancelled")
+            throw e
         } catch (e: Exception) {
             Timber.e(e, "Sync failed")
             Result.retry()
