@@ -78,6 +78,7 @@ the trend and the hypnogram.
   (clusters via gaps-and-islands with running-max-end; supersedes the
   `sleep_rolling_stats` definition from `0003_bedtime_wake_bands.sql`; reuses
   `circular_stats()` from 0003). Apply with `scripts/apply-pg-migrations.sh`.
+- **Write path:** the `sleep_session` AFTER-STATEMENT trigger refreshes *both* `sleep_rolling_stats` and `sleep_stage_daily` per statement, so writes must be single-statement — a per-row `executemany` (API `_insert_records`) fires 2 concurrent refreshes per row and is catastrophic (~98 s for 42 rows before this was fixed).
 - **MCP:** `~/Dev/hcgateway-mcp/server.py` (`_raw_sleep_sessions`; no
   `_classify_episode` anymore). Rebuild: `docker compose up -d --build hcgateway-mcp`.
 - **Grafana** "Health Connect" dashboard (Grafana Cloud):
