@@ -96,8 +96,10 @@ the trend and the hypnogram.
   unwrap-then-linear-stddev approximation to the true circular SD
   `sqrt(-2·ln R)·12/π` (R = mean resultant length; capped at 12 h). Tight band when
   bedtimes cluster, wide when dispersed. Mean and the linear stats are unchanged.
-- **Stage panels:** `sleep_stage_daily` view (`0008_sleep_stage_daily.sql`; ±stddev
-  bands added in `0009_sleep_stage_bands.sql`) — per sleep_day light/deep/rem/awake
+- **Stage panels:** `sleep_stage_daily` **matview** (`0008` view + `0009` ±stddev bands,
+  materialized in `0010_sleep_stage_daily_matview.sql` — the cluster + jsonb explosion
+  was ~1.2 s/query × 5 panels; matview makes reads ~2 ms, refreshed by the
+  sleep_session trigger alongside sleep_rolling_stats) — per sleep_day light/deep/rem/awake
   minutes, % (the four sum to 100), 7-day MA, and upper/lower bands, on the same
   cluster sleep_day. Feeds, in the Grafana **Sleep section**: "Sleep Efficiency"
   (actual/duration from the matview, no MA), "Sleep Stages (%)" stacked-area, and the
