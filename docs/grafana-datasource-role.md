@@ -32,6 +32,7 @@ GRANT CONNECT ON DATABASE hcgateway TO grafana_ro;
 GRANT USAGE  ON SCHEMA public       TO grafana_ro;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO grafana_ro;   -- tables + views
 GRANT SELECT ON sleep_rolling_stats TO grafana_ro;           -- matview (NOT covered by ALL TABLES)
+GRANT SELECT ON sleep_stage_daily   TO grafana_ro;           -- matview (since 0010)
 GRANT SELECT ON heart_rate_hourly   TO grafana_ro;           -- TimescaleDB continuous aggregate
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO grafana_ro;
 ALTER ROLE grafana_ro SET timezone = 'Asia/Tokyo';
