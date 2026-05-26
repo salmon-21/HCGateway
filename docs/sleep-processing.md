@@ -84,10 +84,24 @@ the trend and the hypnogram.
   - Bedtime/Wake/Midpoint/Sleep Duration → unchanged SQL (auto-reflect the new matview).
   - Avg Sleep 7d/30d → `avg(duration)` over `sleep_rolling_stats` (per-night, not per raw session).
   - Sleep Stages → `SELECT … FROM sleep_hypnogram WHERE $__timeFilter("time")`.
+  - Connects as read-only `grafana_ro` whose session timezone is `Asia/Tokyo`, so
+    `$__timeTo()::date` matches the JST `sleep_day` (today's row shows; not the
+    `hcgateway` role, which stays UTC for the MCP). Setup: `docs/grafana-datasource-role.md`.
 - **`sleep_hypnogram`** `night_date` = the matview's 18:00 wake-day `sleep_day`,
   computed on the **cluster** start so a night that resumes after a brief wake stays
   one lane. Evolved `0005_hypnogram_cluster_night.sql` (cluster anchor) →
   `0006_hypnogram_wakeday_night.sql` (18:00 cutoff, replacing the earlier −6h label).
+- **Bedtime/wake bands:** `circular_stats()` (from `0003`) gives the circular mean
+  (atan2 over hour-of-day). `0007_circular_sd.sql` switched the band from an
+  unwrap-then-linear-stddev approximation to the true circular SD
+  `sqrt(-2·ln R)·12/π` (R = mean resultant length; capped at 12 h). Tight band when
+  bedtimes cluster, wide when dispersed. Mean and the linear stats are unchanged.
+- **Stage panels:** `sleep_stage_daily` view (`0008_sleep_stage_daily.sql`; ±stddev
+  bands added in `0009_sleep_stage_bands.sql`) — per sleep_day light/deep/rem/awake
+  minutes, % (the four sum to 100), 7-day MA, and upper/lower bands, on the same
+  cluster sleep_day. Feeds, in the Grafana **Sleep section**: "Sleep Efficiency"
+  (actual/duration from the matview, no MA), "Sleep Stages (%)" stacked-area, and the
+  four per-stage % line panels in Bedtime/Wake/Midpoint style (point line + MA + band).
 
 ## History
 
