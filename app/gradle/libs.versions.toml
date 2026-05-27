@@ -1,8 +1,8 @@
 [versions]
 agp = "9.1.1"
-kotlin = "2.2.10"
+kotlin = "2.3.21"
 compose-bom = "2026.02.00"
-hilt = "2.58"
+hilt = "2.59.2"
 hilt-navigation = "1.2.0"
 hilt-work = "1.2.0"
 retrofit = "2.11.0"
@@ -15,7 +15,7 @@ sentry = "7.19.0"
 sentry-plugin = "6.8.1"
 navigation = "2.8.5"
 lifecycle = "2.8.7"
-ksp = "2.2.10-2.0.2"
+ksp = "2.3.9"
 
 [libraries]
 # Compose
