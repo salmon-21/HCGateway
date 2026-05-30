@@ -11,7 +11,7 @@ Flask API server. Reads here when working under `api/`.
 
 ## Auth
 
-Argon2-hashed password is the source of truth (`users.password`). Tokens (`token`, `refresh`, `expiry`, `fcm_token`) live as columns on the `users` row. `before_request` looks up the bearer token unless the endpoint is in the skip list (`v2.login`, `v2.refresh`, `v2.health`, `v2.status`).
+Argon2-hashed password is the source of truth (`users.password`). Tokens (`token`, `refresh`, `expiry`) live as columns on the `users` row. `before_request` looks up the bearer token unless the endpoint is in the skip list (`v2.login`, `v2.refresh`, `v2.health`, `v2.status`).
 
 User `id` is `uuid` (PG-generated). The legacy Mongo ObjectId-as-string scheme was migrated 1:1 in E2; never alter the hash format — that would lock the device out.
 
@@ -27,9 +27,9 @@ User `id` is `uuid` (PG-generated). The legacy Mongo ObjectId-as-string scheme w
 | GET | `/counts` | bearer | per-table row counts (samples → `count(DISTINCT source_id)`) |
 | POST | `/sync/<method>` | bearer | upsert records via generic `_insert_samples` / `_insert_records` |
 | POST | `/fetch/<method>` | bearer | read records, response shape `{_id, id, app, start, end, data}` |
-| PUT | `/push/<method>` | bearer | FCM push to device (sync request) |
-| DELETE | `/delete/<method>` | bearer | FCM push to device (delete request) |
 | DELETE | `/sync/<method>` | bearer | server-side delete |
+
+FCM push/delete (`PUT /push/<method>` + `DELETE /delete/<method>`) and the `users.fcm_token` column were removed: the upstream service account was never deployed (only a 2-byte placeholder was committed) and the Android-side `handlePush` was a stub, so the server→device path was dead end-to-end. Re-add both sides if two-way sync is ever desired.
 
 ## /api/v2/status semantics
 

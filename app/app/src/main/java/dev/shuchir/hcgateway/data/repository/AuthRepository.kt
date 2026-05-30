@@ -16,12 +16,11 @@ class AuthRepository @Inject constructor(
         useHttps: Boolean,
         username: String,
         password: String,
-        fcmToken: String,
     ): Result<Unit> = try {
         // Save API base temporarily so DynamicBaseUrlInterceptor can route the request
         preferencesRepository.saveLoginInfo(apiBase, username, useHttps)
 
-        val response = apiService.login(LoginRequest(username, password, fcmToken))
+        val response = apiService.login(LoginRequest(username, password))
         if (response.isSuccessful && response.body() != null) {
             val body = response.body()!!
             preferencesRepository.saveTokens(body.token, body.refresh)

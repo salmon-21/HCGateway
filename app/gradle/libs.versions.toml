@@ -10,7 +10,6 @@ okhttp = "4.12.0"
 datastore = "1.1.1"
 workmanager = "2.10.0"
 health-connect = "1.1.0"
-firebase-bom = "33.7.0"
 sentry = "7.19.0"
 sentry-plugin = "6.8.1"
 navigation = "2.8.5"
@@ -59,10 +58,6 @@ workmanager = { group = "androidx.work", name = "work-runtime-ktx", version.ref 
 # Health Connect
 health-connect = { group = "androidx.health.connect", name = "connect-client", version.ref = "health-connect" }
 
-# Firebase
-firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebase-bom" }
-firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging-ktx" }
-
 # Sentry
 sentry = { group = "io.sentry", name = "sentry-android", version.ref = "sentry" }
 sentry-timber = { group = "io.sentry", name = "sentry-android-timber", version.ref = "sentry" }
@@ -85,6 +80,5 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
-google-services = { id = "com.google.gms.google-services", version = "4.4.2" }
 aboutlibraries = { id = "com.mikepenz.aboutlibraries.plugin", version = "11.6.3" }
 sentry = { id = "io.sentry.android.gradle", version.ref = "sentry-plugin" }

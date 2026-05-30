@@ -8,8 +8,6 @@ services:
       - ./api/.env
     container_name: hcgateway_api
     restart: unless-stopped
-    volumes:
-      - ./api/service-account.json:/app/service-account.json
     depends_on:
       - postgres
 

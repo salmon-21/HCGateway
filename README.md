@@ -87,7 +87,6 @@ users {
     _id: string
     username: string
     password: string
-    fcmToken: string
     expiry: datetime
     token: string
     refresh: string
@@ -126,12 +125,15 @@ The documentation for the REST API can be found at https://hcgateway.shuchir.dev
 The mobile application is a simple Android application that pings the server every 2 hours (customizable) to send data. It starts a foreground service to do this, and the service will run even if the application is closed. The application is written in React Native.
 
 ## Self Hosting
-You can self host the server and database for full control. However, if you'd like to push from your own server, you must build the mobile application yourself. You can find the instructions to build the mobile application below. This is because the app is packaged with the firebase key, and cannot change it dynamically. Again, firebase is only necessary if you want to push from your own server.
-### Firebase
-Follow these steps to set up Firebase:
-1. Create a new Firebase project at https://console.firebase.google.com/
-2. Add an Android app to the project
-3. Download the `google-services.json` file and place it in the `firebase/` folder as well as the `android/app/` folder
+You can self host the server and database for full control.
+
+> **Firebase / FCM was removed on this fork.** The upstream `/push` and
+> `/delete` endpoints relied on a Firebase admin service account that was
+> never deployed (only an empty placeholder was committed), and the
+> Android side `handlePush` was a stub, so the server → device push path
+> was dead end-to-end. The Firebase deps, `google-services.json`, the
+> FCM service, and the `users.fcm_token` column are all gone. Re-add
+> them on both sides if you want two-way sync.
 
 ### Docker (recommended)
 1. **Prerequisites**\
@@ -142,9 +144,6 @@ Follow these steps to set up Firebase:
    - You’ll need to configure environment variables before starting the services.
    - Copy the provided `.env.example` file to `.env` inside the `api/` directory and configure it as necessary. When setting the `MONGO_URI` variable, the following format should be used: `mongodb://<username>:<password>@db:27017/hcgateway?authSource=admin`
    - Set the mongo DB username and password in the `docker-compose.yml` file as well.
-
-    - Visit the firebase console > project settings > Service accounts and click generate new private key
-    - Save the file as `service-account.json` in the `api/` folder
 
 3. **Running the Containers with Docker Compose**\
     The project uses Docker Compose for easier container orchestration. To run the API using Docker Compose, run the following command:
@@ -160,8 +159,6 @@ You can access the API at `http://localhost:6644`
 - `cd` into the api/ folder
 - run `pip install -r requirements.txt`
 - rename `.env.example` to `.env` and fill in the values
-- Visit the firebase console > project settings > Service accounts and click generate new private key
-- Save the file as `service-account.json` in the `api/` folder
 - run `python3 main.py` to start the server
 
 #### Mobile Application

@@ -4,7 +4,6 @@ Flask-Cors==6.0.2
 python-dotenv==1.2.2
 requests==2.34.2
 sentry-sdk==2.60.0
-pyfcm==2.1.0
 psycopg[binary]==3.2.10
 psycopg-pool==3.2.6
 python-dateutil==2.9.0.post0

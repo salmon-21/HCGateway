@@ -2,7 +2,6 @@ package dev.shuchir.hcgateway.ui.login
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.messaging.FirebaseMessaging
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.shuchir.hcgateway.data.local.PreferencesRepository
 import dev.shuchir.hcgateway.data.repository.AuthRepository
@@ -12,7 +11,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
 data class LoginUiState(
@@ -92,18 +90,11 @@ class LoginViewModel @Inject constructor(
         _uiState.value = state.copy(isLoading = true, error = null)
 
         viewModelScope.launch {
-            val fcmToken = try {
-                FirebaseMessaging.getInstance().token.await()
-            } catch (e: Exception) {
-                ""
-            }
-
             val result = authRepository.login(
                 apiBase = state.serverAddress,
                 useHttps = state.useHttps,
                 username = state.username,
                 password = state.password,
-                fcmToken = fcmToken,
             )
 
             _uiState.value = if (result.isSuccess) {
