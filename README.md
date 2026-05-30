@@ -1,7 +1,15 @@
 # HCGateway
 
-> [!NOTE]
-> **This is a personal fork** of [ShuchirJ/HCGateway](https://github.com/ShuchirJ/HCGateway), maintained for the author's own deployment. Upstream parity is not a goal: the Android app has been rewritten in Jetpack Compose, additional Health Connect record types are supported, and a custom `post-process` pipeline plus a Grafana Cloud dashboard are bundled. Issues and PRs from outside users are not actively triaged. If you want the original project, use the upstream repository.
+> [!IMPORTANT]
+> **This is a personal fork** of [ShuchirJ/HCGateway](https://github.com/ShuchirJ/HCGateway), kept here for the author's own deployment.
+>
+> - **I don't have the bandwidth to maintain this as a shared project in 2026.** Issues, discussions, and PRs from outside users are not triaged.
+> - **Largely vibecoded with [Claude Code](https://claude.com/claude-code)** — over half of the commits on `personal` are Claude co-authored. I don't claim deep understanding of every line; treat this as a starting point, not a vetted reference implementation. Pay particular attention to anything security-sensitive (e.g. the Fernet key derivation flagged in [#63](https://github.com/ShuchirJ/HCGateway/issues/63) upstream).
+> - **No upstream parity:** the Android app has been rewritten in Jetpack Compose, the API/DB has been ported from MongoDB to PostgreSQL/TimescaleDB on `personal`, and a Grafana Cloud dashboard plus JST-specific assumptions are bundled.
+> - **Branches:**
+>   - `personal` (default) — what I run. PostgreSQL/TimescaleDB; not upstream-compatible.
+>   - `compose-rewrite` — Jetpack Compose Android app on top of the upstream MongoDB API (with a small `/counts` endpoint added). **Snapshot only**, no further updates planned.
+> - **If you want a maintained version, fork it.** The upstream repo has also been quiet for several months. Please feel free.
 
 HCGateway is a platform to let developers connect to the Health Connect API on Android via a REST API. You can view the documentation for the REST API [here](https://hcgateway.shuchir.dev/)
 
