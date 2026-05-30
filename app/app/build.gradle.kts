@@ -3,7 +3,6 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.google.services)
     alias(libs.plugins.aboutlibraries)
     alias(libs.plugins.sentry)
 }
@@ -111,10 +110,6 @@ dependencies {
 
     // Health Connect
     implementation(libs.health.connect)
-
-    // Firebase
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.messaging)
 
     // Sentry
     implementation(libs.sentry)

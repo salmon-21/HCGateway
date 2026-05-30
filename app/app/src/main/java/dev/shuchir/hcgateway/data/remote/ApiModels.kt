@@ -5,7 +5,6 @@ import com.google.gson.JsonElement
 data class LoginRequest(
     val username: String,
     val password: String,
-    val fcm: String = "",
 )
 
 data class LoginResponse(

@@ -6,7 +6,6 @@ import datetime
 import time
 from dotenv import load_dotenv
 load_dotenv()
-from pyfcm import FCMNotification
 from argon2 import PasswordHasher
 from dateutil import parser as dateparser
 from zoneinfo import ZoneInfo
@@ -122,7 +121,6 @@ def login():
 
     username = request.json['username']
     password = request.json['password']
-    fcm_token = request.json.get('fcmToken')
 
     user = fetch_one(
         "SELECT id, password, token, refresh, expiry FROM users WHERE username = %s",
@@ -138,9 +136,9 @@ def login():
         with pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO users (username, password, token, refresh, expiry, fcm_token) "
-                    "VALUES (%s, %s, %s, %s, %s, %s)",
-                    (username, ph.hash(password), new_token, new_refresh, expiry, fcm_token),
+                    "INSERT INTO users (username, password, token, refresh, expiry) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (username, ph.hash(password), new_token, new_refresh, expiry),
                 )
         return jsonify({"token": new_token, "refresh": new_refresh, "expiry": expiry.isoformat()}), 201
 
@@ -148,14 +146,6 @@ def login():
         ph.verify(user['password'], password)
     except Exception:
         return jsonify({'error': 'invalid password'}), 403
-
-    if fcm_token:
-        with pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE users SET fcm_token = %s WHERE id = %s",
-                    (fcm_token, user['id']),
-                )
 
     existing_expiry = user['expiry']
     if existing_expiry is not None and existing_expiry.tzinfo is None:
@@ -604,57 +594,3 @@ def del_from_db(method):
     return jsonify({'success': True}), 200
 
 
-# ---------------------------------------------------------------------------
-# Push / Delete via FCM (no DB writes)
-# ---------------------------------------------------------------------------
-
-@v2.route("/push/<method>", methods=['PUT'])
-def push_data(method):
-    if not method or not request.json or "data" not in request.json:
-        return jsonify({'error': 'invalid request'}), 400
-    data = request.json["data"]
-    if not isinstance(data, list):
-        data = [data]
-
-    fixed = method[0].upper() + method[1:]
-    for r in data:
-        r["recordType"] = fixed
-        if "time" not in r and ("startTime" not in r or "endTime" not in r):
-            return jsonify({'error': 'no start time or end time provided. If only one time is to be used, then use the "time" attribute instead.'}), 400
-        if ("startTime" in r and "endTime" not in r) or ("startTime" not in r and "endTime" in r):
-            return jsonify({'error': 'start time and end time must be provided together.'}), 400
-
-    user = fetch_one("SELECT fcm_token FROM users WHERE id = %s", (str(g.user),))
-    fcm_token = user["fcm_token"] if user else None
-    if not fcm_token:
-        return jsonify({'error': 'no fcm token found'}), 404
-
-    fcm = FCMNotification(service_account_file='service-account.json', project_id=os.environ['FCM_PROJECT_ID'])
-    try:
-        fcm.notify(fcm_token=fcm_token, data_payload={"op": "PUSH", "data": json.dumps(data)})
-    except Exception:
-        return jsonify({'error': 'Message delivery failed'}), 500
-    return jsonify({'success': True, "message": "request has been sent to device."}), 200
-
-
-@v2.route("/delete/<method>", methods=['DELETE'])
-def del_data(method):
-    if not method or not request.json or "uuid" not in request.json:
-        return jsonify({'error': 'invalid request'}), 400
-
-    uuids = request.json["uuid"]
-    if not isinstance(uuids, list):
-        uuids = [uuids]
-
-    fixed = method[0].upper() + method[1:]
-    user = fetch_one("SELECT fcm_token FROM users WHERE id = %s", (str(g.user),))
-    fcm_token = user["fcm_token"] if user else None
-    if not fcm_token:
-        return jsonify({'error': 'no fcm token found'}), 404
-
-    fcm = FCMNotification(service_account_file='service-account.json', project_id=os.environ['FCM_PROJECT_ID'])
-    try:
-        fcm.notify(fcm_token=fcm_token, data_payload={"op": "DEL", "data": json.dumps({"uuids": uuids, "recordType": fixed})})
-    except Exception:
-        return jsonify({'error': 'Message delivery failed'}), 500
-    return jsonify({'success': True, "message": "request has been sent to device."}), 200

@@ -24,7 +24,6 @@ class PreferencesRepository @Inject constructor(
             lastSync = prefs[UserPreferences.LAST_SYNC] ?: 0L,
             changesToken = prefs[UserPreferences.CHANGES_TOKEN] ?: "",
             sentryEnabled = prefs[UserPreferences.SENTRY_ENABLED] ?: false,
-            fcmToken = prefs[UserPreferences.FCM_TOKEN] ?: "",
             useHttps = prefs[UserPreferences.USE_HTTPS] ?: true,
             lastSyncResults = prefs[UserPreferences.LAST_SYNC_RESULTS] ?: "",
             startOnBoot = prefs[UserPreferences.START_ON_BOOT] ?: true,
@@ -83,10 +82,6 @@ class PreferencesRepository @Inject constructor(
         dataStore.edit { it[UserPreferences.CHANGES_TOKEN] = token }
     }
 
-    suspend fun updateFcmToken(token: String) {
-        dataStore.edit { it[UserPreferences.FCM_TOKEN] = token }
-    }
-
     suspend fun updateLastSyncResults(json: String) {
         dataStore.edit { it[UserPreferences.LAST_SYNC_RESULTS] = json }
     }
@@ -109,7 +104,7 @@ class PreferencesRepository @Inject constructor(
             prefs.remove(UserPreferences.REFRESH_TOKEN)
             prefs.remove(UserPreferences.LAST_SYNC)
             prefs.remove(UserPreferences.CHANGES_TOKEN)
-            // Keep: API_BASE, USERNAME, USE_HTTPS, THEME_MODE, SYNC_INTERVAL, FULL_SYNC_MODE, FCM_TOKEN, SENTRY_ENABLED
+            // Keep: API_BASE, USERNAME, USE_HTTPS, THEME_MODE, SYNC_INTERVAL, FULL_SYNC_MODE, SENTRY_ENABLED
         }
     }
 }

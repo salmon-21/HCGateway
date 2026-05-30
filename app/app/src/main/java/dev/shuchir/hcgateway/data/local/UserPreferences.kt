@@ -16,7 +16,6 @@ object UserPreferences {
     val LAST_SYNC = longPreferencesKey("last_sync") // epoch millis
     val CHANGES_TOKEN = stringPreferencesKey("changes_token")
     val SENTRY_ENABLED = booleanPreferencesKey("sentry_enabled")
-    val FCM_TOKEN = stringPreferencesKey("fcm_token")
     val USE_HTTPS = booleanPreferencesKey("use_https")
     val LAST_SYNC_RESULTS = stringPreferencesKey("last_sync_results") // JSON: [{"typeName":"Steps","recordCount":38},...]
     val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
@@ -35,7 +34,6 @@ data class UserSettings(
     val lastSync: Long = 0L,
     val changesToken: String = "",
     val sentryEnabled: Boolean = false,
-    val fcmToken: String = "",
     val useHttps: Boolean = true,
     val lastSyncResults: String = "", // JSON
     val startOnBoot: Boolean = true,
