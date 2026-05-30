@@ -18,10 +18,17 @@ services:
     container_name: hcgateway_postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      # Bind to loopback only. PG is reached over the docker network by
+      # `api` and over `pdc-agent`'s host-namespace localhost — neither
+      # needs a LAN-facing port. Exposing 5432 on 0.0.0.0 made `example`
+      # password reachable from the host's LAN.
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_USER: hcgateway
-      POSTGRES_PASSWORD: example
+      # Default kept as `example` so a vanilla `docker compose up` still
+      # boots, but it is the developer's job to override via .env for any
+      # deployment they care about. See .env.example.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example}
       POSTGRES_DB: hcgateway
     volumes:
       - ./pg/data:/var/lib/postgresql/data
@@ -36,9 +43,9 @@ services:
       - -token
       - ${PDC_AGENT_TOKEN}
       - -cluster
-      - prod-au-southeast-1
+      - ${PDC_CLUSTER:-prod-au-southeast-1}
       - -gcloud-hosted-grafana-id
-      - "887998"
+      - ${PDC_GRAFANA_ID}
     depends_on:
       - postgres
 
