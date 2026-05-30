@@ -1,6 +1,5 @@
 from flask import Blueprint, request, jsonify, g
 import os
-import json
 import secrets
 import datetime
 import time
