@@ -63,7 +63,8 @@ The platform consists of two parts:
     - Weight (`weight`)
     - Wheelchair Pushes (`wheelchairPushes`)
 
-Support for more types is planned for the future.
+> [!NOTE]
+> **On this fork, the API persists _every_ Health Connect record type the Android app reads** — each in its own PostgreSQL table (`pg/migrations/0012`). That includes types the list above omits: Body Water Mass (`bodyWaterMass`), Cycling Pedaling Cadence (`cyclingPedalingCadence`), Heart Rate Variability (`heartRateVariabilityRmssd`), Intermenstrual Bleeding (`intermenstrualBleeding`), Mindfulness Session (`mindfulnessSession`), Planned Exercise Session (`plannedExerciseSession`), Sexual Activity (`sexualActivity`), and Skin Temperature (`skinTemperature`). Previously the API only knew ~20 types and returned 400 for the rest, which stalled the client's Changes-token sync.
 
 - Each sync takes approximatly 15 minutes
 - The server encrypts the data using Fernet encryption, then stores it in a mongo database.
