@@ -33,11 +33,17 @@ METHOD_SCHEMA = {
         "sample_time_field": "time",
         "value_cols": [("speed", "speed_mps", "double precision")],
     },
-    "heartRateVariability": {
+    "heartRateVariabilityRmssd": {
+        # Client method is HeartRateVariabilityRmssd -> normalised
+        # heartRateVariabilityRmssd (was mis-keyed "heartRateVariability").
+        # HC's record is INSTANT (single `time`), not interval, and the client
+        # sends the value under `heartRateVariabilityMillis`. end_at is nullable
+        # since 0013 so the instant path (no end_at) inserts; legacy backfill
+        # rows keep their populated end_at.
         "table": "heart_rate_variability",
-        "kind": "interval",
+        "kind": "instant",
         "is_hypertable": True,
-        "value_cols": [("rmssd", "rmssd", "double precision")],
+        "value_cols": [("heartRateVariabilityMillis", "rmssd", "double precision")],
     },
     "steps": {
         "table": "steps",
@@ -67,8 +73,11 @@ METHOD_SCHEMA = {
         "value_cols": [("percentage", "percentage", "smallint")],
     },
     "respiratoryRate": {
+        # HC RespiratoryRateRecord is INSTANT (client sends `time`); was wrongly
+        # kind="interval" so the interval path read absent `startTime` and skipped
+        # every row. end_at made nullable in 0013 for the instant insert.
         "table": "respiratory_rate",
-        "kind": "interval",
+        "kind": "instant",
         "is_hypertable": False,
         "value_cols": [("rate", "rate", "double precision")],
     },
@@ -132,13 +141,16 @@ METHOD_SCHEMA = {
         "table": "basal_metabolic_rate",
         "kind": "instant",
         "is_hypertable": False,
-        "value_cols": [("bmr", "bmr", "double precision")],
+        # Client sends `basalMetabolicRate` (inKilocaloriesPerDay), not `bmr`.
+        "value_cols": [("basalMetabolicRate", "bmr", "double precision")],
     },
     "height": {
         "table": "height",
         "kind": "instant",
         "is_hypertable": False,
-        "value_cols": [("height", "height_cm", "double precision")],
+        # Client sends meters (record.height.inMeters); column renamed to
+        # height_m in 0013 (was height_cm but held metres -> 100x mislabel).
+        "value_cols": [("height", "height_m", "double precision")],
     },
     "bloodPressure": {
         "table": "blood_pressure",
@@ -154,7 +166,189 @@ METHOD_SCHEMA = {
         "table": "vo2_max",
         "kind": "instant",
         "is_hypertable": False,
-        "value_cols": [("vo2Max", "vo2_max", "double precision")],
+        # Client sends `vo2MillilitersPerMinuteKilogram`, not `vo2Max`.
+        "value_cols": [("vo2MillilitersPerMinuteKilogram", "vo2_max", "double precision")],
+    },
+
+    # -----------------------------------------------------------------------
+    # Full Health Connect coverage (0012). Every type the Android client sends
+    # now has an entry so /sync returns 200 (not 400) and the client's Changes
+    # token can advance. Value-column source paths match RecordSerializer.kt.
+    # -----------------------------------------------------------------------
+
+    # --- samples ---
+    "power": {
+        "table": "power_sample",
+        "kind": "samples",
+        "sample_path": "samples",
+        "sample_time_field": "time",
+        "value_cols": [("power", "watts", "double precision")],
+    },
+    "stepsCadence": {
+        "table": "steps_cadence_sample",
+        "kind": "samples",
+        "sample_path": "samples",
+        "sample_time_field": "time",
+        "value_cols": [("rate", "rate", "double precision")],
+    },
+    "cyclingPedalingCadence": {
+        "table": "cycling_pedaling_cadence_sample",
+        "kind": "samples",
+        "sample_path": "samples",
+        "sample_time_field": "time",
+        "value_cols": [("revolutionsPerMinute", "rpm", "double precision")],
+    },
+
+    # --- interval ---
+    "activeCaloriesBurned": {
+        "table": "active_calories_burned",
+        "kind": "interval",
+        "is_hypertable": False,
+        "value_cols": [("energy", "kcal", "double precision")],
+    },
+    "elevationGained": {
+        "table": "elevation_gained",
+        "kind": "interval",
+        "is_hypertable": False,
+        "value_cols": [("elevation", "meters", "double precision")],
+    },
+    "hydration": {
+        "table": "hydration",
+        "kind": "interval",
+        "is_hypertable": False,
+        "value_cols": [("volume", "liters", "double precision")],
+    },
+    "menstruationPeriod": {
+        "table": "menstruation_period",
+        "kind": "interval",
+        "is_hypertable": False,
+        "value_cols": [],  # start_at + end_at only
+    },
+    "mindfulnessSession": {
+        "table": "mindfulness_session",
+        "kind": "interval",
+        "is_hypertable": False,
+        "value_cols": [("mindfulnessSessionType", "session_type", "smallint")],
+    },
+    "nutrition": {
+        # Flat top-level nutrient fields -> explicit nullable columns (lossless,
+        # queryable). All nutrient cols are in NULLABLE_COLS so a record carrying
+        # only some fields still inserts.
+        "table": "nutrition",
+        "kind": "interval",
+        "is_hypertable": False,
+        "value_cols": [
+            ("name", "name", "text"),
+            ("energy", "energy_kcal", "double precision"),
+            ("totalFat", "total_fat_g", "double precision"),
+            ("totalCarbohydrate", "total_carbohydrate_g", "double precision"),
+            ("protein", "protein_g", "double precision"),
+            ("dietaryFiber", "dietary_fiber_g", "double precision"),
+            ("sugar", "sugar_g", "double precision"),
+            ("sodium", "sodium_g", "double precision"),
+            ("potassium", "potassium_g", "double precision"),
+            ("cholesterol", "cholesterol_g", "double precision"),
+            ("saturatedFat", "saturated_fat_g", "double precision"),
+            ("unsaturatedFat", "unsaturated_fat_g", "double precision"),
+            ("calcium", "calcium_g", "double precision"),
+            ("iron", "iron_g", "double precision"),
+            ("vitaminA", "vitamin_a_g", "double precision"),
+            ("vitaminC", "vitamin_c_g", "double precision"),
+            ("mealType", "meal_type", "smallint"),
+        ],
+    },
+    "plannedExerciseSession": {
+        "table": "planned_exercise_session",
+        "kind": "interval",
+        "is_hypertable": False,
+        # blocks is a nested array under a single key -> jsonb (nullable).
+        "value_cols": [
+            ("exerciseType", "exercise_type", "smallint"),
+            ("blocks", "blocks", "jsonb"),
+        ],
+    },
+    "wheelchairPushes": {
+        "table": "wheelchair_pushes",
+        "kind": "interval",
+        "is_hypertable": False,
+        "value_cols": [("count", "count", "integer")],
+    },
+
+    # --- instant ---
+    "basalBodyTemperature": {
+        "table": "basal_body_temperature",
+        "kind": "instant",
+        "is_hypertable": False,
+        "value_cols": [("temperature", "temperature_c", "double precision")],
+    },
+    "bloodGlucose": {
+        "table": "blood_glucose",
+        "kind": "instant",
+        "is_hypertable": False,
+        "value_cols": [("level", "level_mmol_l", "double precision")],
+    },
+    "bodyTemperature": {
+        "table": "body_temperature",
+        "kind": "instant",
+        "is_hypertable": False,
+        "value_cols": [("temperature", "temperature_c", "double precision")],
+    },
+    "bodyWaterMass": {
+        "table": "body_water_mass",
+        "kind": "instant",
+        "is_hypertable": False,
+        "value_cols": [("mass", "mass_kg", "double precision")],
+    },
+    "boneMass": {
+        "table": "bone_mass",
+        "kind": "instant",
+        "is_hypertable": False,
+        "value_cols": [("mass", "mass_kg", "double precision")],
+    },
+    "cervicalMucus": {
+        "table": "cervical_mucus",
+        "kind": "instant",
+        "is_hypertable": False,
+        "value_cols": [
+            ("appearance", "appearance", "smallint"),
+            ("sensation", "sensation", "smallint"),
+        ],
+    },
+    "intermenstrualBleeding": {
+        "table": "intermenstrual_bleeding",
+        "kind": "instant",
+        "is_hypertable": False,
+        "value_cols": [],  # time only
+    },
+    "leanBodyMass": {
+        "table": "lean_body_mass",
+        "kind": "instant",
+        "is_hypertable": False,
+        "value_cols": [("mass", "mass_kg", "double precision")],
+    },
+    "menstruationFlow": {
+        "table": "menstruation_flow",
+        "kind": "instant",
+        "is_hypertable": False,
+        "value_cols": [("flow", "flow", "smallint")],
+    },
+    "ovulationTest": {
+        "table": "ovulation_test",
+        "kind": "instant",
+        "is_hypertable": False,
+        "value_cols": [("result", "result", "smallint")],
+    },
+    "restingHeartRate": {
+        "table": "resting_heart_rate",
+        "kind": "instant",
+        "is_hypertable": False,
+        "value_cols": [("beatsPerMinute", "bpm", "smallint")],
+    },
+    "sexualActivity": {
+        "table": "sexual_activity",
+        "kind": "instant",
+        "is_hypertable": False,
+        "value_cols": [("protectionUsed", "protection_used", "smallint")],
     },
 }
 
@@ -209,6 +403,16 @@ NULLABLE_COLS = {
     "skin_temperature": {"baseline_c"},
     "sleep_session": {"stages"},
     "vitality_score": {"total_score", "sleep_score", "activity_score", "shr_score"},
+    # bloodPressure: HC sends only systolic+diastolic, never pulse.
+    "blood_pressure": {"pulse"},
+    # planned exercise: blocks may be absent/empty (exercise_type is required,
+    # so this is a strict subset of value_cols — keep it explicit).
+    "planned_exercise_session": {"blocks"},
+    # nutrition: EVERY value column is optional in the payload, so the nullable
+    # set is exactly its value_cols dst names — derive it rather than hand-listing
+    # 17 names that would silently drift (a dropped name skips records → re-blocks
+    # the Changes token).
+    "nutrition": {dst for _, dst, _ in METHOD_SCHEMA["nutrition"]["value_cols"]},
 }
 
 

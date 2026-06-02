@@ -47,11 +47,16 @@ The endpoint is reachable from the Cloudflare Workers VPC binding only (no Servi
 
 Dispatched by `METHOD_SCHEMA[method].kind`:
 
-- **`samples`** (`heartRate`, `speed`): flatten `item.samples[]` into N rows in `heart_rate_sample` / `speed_sample`. Idempotency = `DELETE WHERE source_id = ANY(...)` then bulk INSERT in one transaction.
+- **`samples`** (`heartRate`, `speed`, `power`, `stepsCadence`, `cyclingPedalingCadence`): flatten `item.samples[]` into N rows. Idempotency = `DELETE WHERE source_id = ANY(...) AND user_id = %s` then bulk INSERT in one transaction. The `user_id` predicate is required — without it a sync would delete another user's rows that happen to share a Health Connect `source_id`.
 - **`interval`** (steps, distance, sleepSession, …): one row per `metadata.id` in the destination table, with `start_at` + `end_at`. ON CONFLICT target is `(start_at, id)` for hypertables and `(id)` for plain tables — driven by `is_hypertable` in the schema dict.
 - **`instant`** (oxygenSaturation, weight, vo2Max, …): same as interval but the source has only `time` (no `endTime`) and the table has only `start_at`.
 
 `_pick_scalar` normalises Health Connect unit-object values (e.g. `distance.inMeters`) at write time — flattened to the SI scalar matching the column.
+
+**Full type coverage (0012/0013).** `METHOD_SCHEMA` now has an entry for *every* record type the Android client sends (43 keys: all 41 client types + backfill-only `stress`/`vitalityScore`). This matters operationally: a `/sync/<type>` 400 ("unknown method") makes the client mark the type failed and *refuse to advance its Changes API token*, so the same window re-syncs forever. Each new type is a plain per-type table (0012). Gotchas baked in:
+- A method's `kind` must match how Health Connect emits the record. `heartRateVariabilityRmssd` and `respiratoryRate` are **instant** (the client sends `time`, not `startTime`/`endTime`) — they were wrongly `interval` and skipped every row; their tables' `end_at` was made nullable (0013) so the instant path (no `end_at`) inserts.
+- A `value_cols` source path must match the client's JSON key (per `RecordSerializer.kt`), e.g. `basalMetabolicRate`, `vo2MillilitersPerMinuteKilogram`, `heartRateVariabilityMillis`, `height` (meters → `height_m`, renamed from the 100x-mislabelled `height_cm`).
+- A column the client never sends (e.g. `bloodPressure.pulse`) must be in `NULLABLE_COLS` **and** nullable in the DB — otherwise the row is silently skipped (not nullable in schema) or 500s (in `NULLABLE_COLS` but `NOT NULL` in PG, which re-blocks the token).
 
 ## PostgreSQL / TimescaleDB conventions
 

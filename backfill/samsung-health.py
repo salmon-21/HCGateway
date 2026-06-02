@@ -613,9 +613,11 @@ def import_height():
         if not start_dt:
             continue
         pkg = _short(r, "pkg_name") or "com.sec.android.app.shealth"
-        out.append((datauuid, USER_ID, start_dt, float(height), pkg))
+        # Samsung Health CSV stores height in cm; the column is now height_m
+        # (metres, canonical SI) since pg/migrations/0013, so convert.
+        out.append((datauuid, USER_ID, start_dt, float(height) / 100.0, pkg))
     n = copy_rows(PG, "height",
-                  ["id", "user_id", "start_at", "height_cm", "app"], out)
+                  ["id", "user_id", "start_at", "height_m", "app"], out)
     print(f"  height: {n}")
 
 

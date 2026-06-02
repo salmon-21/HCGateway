@@ -372,8 +372,8 @@ def _insert_samples(conn, schema, user_id, items):
     with conn.cursor() as cur:
         if source_ids:
             cur.execute(
-                f"DELETE FROM {table} WHERE source_id = ANY(%s::uuid[])",
-                (source_ids,),
+                f"DELETE FROM {table} WHERE source_id = ANY(%s::uuid[]) AND user_id = %s",
+                (source_ids, str(user_id)),
             )
         if rows:
             # COPY beats executemany by ~20x for the high-volume sample tables.
