@@ -7,20 +7,26 @@ section). Recreate it if the database is rebuilt.
 
 ## Why
 
-1. **JST session timezone fixes "today's sleep not showing".** Sleep panels filter on
-   `sleep_day` (a JST date) with `WHERE sleep_day <= $__timeTo()::date`. The `::date`
-   cast happens in the connection's **session timezone**. With a UTC session, in the
-   early JST morning (UTC still the previous calendar day) `$__timeTo()::date` lags by
-   a day and the current `sleep_day` is excluded → today's row is invisible until
-   09:00 JST. A JST session makes `$__timeTo()::date` / `now()::date` resolve to the
-   JST date, matching `sleep_day`. This fixes all sleep_day panels centrally — no
-   per-panel query edits.
-   - **Do NOT** set the timezone on the shared `hcgateway` role instead. The MCP
+1. **Least privilege.** Grafana only needs `SELECT`; it should not connect as the
+   `hcgateway` superuser.
+2. **JST session timezone — convenience only, NOT the "today's sleep" fix.** The
+   `Asia/Tokyo` session makes bare `timestamptz→date` casts (e.g. `now()::date`) and
+   ad-hoc exploration resolve to the JST calendar day, which is handy. But it does
+   **not** fix the "today's sleep not showing" bug, despite an earlier belief that it
+   did. Sleep panels filter `sleep_day` (a JST date) against Grafana's `$__timeFrom()`/
+   `$__timeTo()` macros, and Grafana renders those as **string literals** (`'…Z'`). A
+   bare `$__timeTo()::date` is therefore a *text→date* cast that just reads the date
+   field of the UTC ISO string and **ignores the session timezone entirely** — so in
+   the early JST morning (UTC still the previous calendar day) today's `sleep_day` is
+   dropped until 09:00 JST. The fix lives **in the panel SQL**, which casts explicitly:
+   `($__timeTo()::timestamptz AT TIME ZONE 'Asia/Tokyo')::date` (the `::timestamptz`
+   makes it a *timestamptz→date* cast that honors the JST conversion). This is
+   session-timezone-independent, matching the already-correct `now() AT TIME ZONE
+   'Asia/Tokyo'` style in the Avg-Sleep stat panels.
+   - **Do NOT** set the timezone on the shared `hcgateway` role. The MCP
      (`~/Dev/hcgateway-mcp/server.py`) assumes psycopg returns UTC and adds +9h in
      Python (e.g. `start_jst = s + JST`); a JST session there **double-shifts**
      bedtime/wake by 9 h. Only Grafana's dedicated role gets JST; `hcgateway` stays UTC.
-2. **Least privilege.** Grafana only needs `SELECT`; it should not connect as the
-   `hcgateway` superuser.
 
 ## Setup (run as a superuser such as `hcgateway`)
 

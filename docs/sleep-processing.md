@@ -85,9 +85,14 @@ the trend and the hypnogram.
   - Bedtime/Wake/Midpoint/Sleep Duration → unchanged SQL (auto-reflect the new matview).
   - Avg Sleep 7d/30d → `avg(duration)` over `sleep_rolling_stats` (per-night, not per raw session).
   - Sleep Stages → `SELECT … FROM sleep_hypnogram WHERE $__timeFilter("time")`.
-  - Connects as read-only `grafana_ro` whose session timezone is `Asia/Tokyo`, so
-    `$__timeTo()::date` matches the JST `sleep_day` (today's row shows; not the
-    `hcgateway` role, which stays UTC for the MCP). Setup: `docs/grafana-datasource-role.md`.
+  - Connects as read-only `grafana_ro` (least privilege). **`sleep_day` filters must
+    cast the time macros explicitly:** `WHERE sleep_day >= ($__timeFrom()::timestamptz
+    AT TIME ZONE 'Asia/Tokyo')::date AND sleep_day <= ($__timeTo()::timestamptz AT TIME
+    ZONE 'Asia/Tokyo')::date`. Grafana renders `$__timeTo()` as a **string literal**, so
+    a bare `$__timeTo()::date` is a *text→date* cast that ignores the session timezone
+    and drops today's JST `sleep_day` until 09:00 JST — the role's `Asia/Tokyo` session
+    does **not** fix this (it only affects `timestamptz→date`, e.g. `now()::date`).
+    Setup: `docs/grafana-datasource-role.md`.
 - **`sleep_hypnogram`** `night_date` = the matview's 18:00 wake-day `sleep_day`,
   computed on the **cluster** start so a night that resumes after a brief wake stays
   one lane. Evolved `0005_hypnogram_cluster_night.sql` (cluster anchor) →
