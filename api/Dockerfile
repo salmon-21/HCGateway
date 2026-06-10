@@ -13,5 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code to the container
 COPY . .
 
-# Set the command to run the Flask app
-CMD ["python", "main.py"]
+# gunicorn instead of the Flask dev server: the dev server is single-threaded,
+# so one slow /fetch would block the device's /sync. 1 worker keeps the
+# in-process caches (streak, sleep-count) coherent; threads give concurrency.
+CMD ["gunicorn", "--bind", "0.0.0.0:6644", "--workers", "1", "--threads", "4", "--timeout", "120", "main:app"]
