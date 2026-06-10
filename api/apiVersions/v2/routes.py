@@ -362,6 +362,15 @@ def _insert_samples(conn, schema, user_id, method, items):
     val_cols = schema["value_cols"]
 
     source_ids, rows, skipped = [], [], 0
+    t_min = t_max = None
+
+    def _track(t):
+        nonlocal t_min, t_max
+        if t_min is None or t < t_min:
+            t_min = t
+        if t_max is None or t > t_max:
+            t_max = t
+
     for item in items:
         meta = item.get("metadata") or {}
         source_id = meta.get("id")
@@ -370,11 +379,16 @@ def _insert_samples(conn, schema, user_id, method, items):
             skipped += 1
             continue
         source_ids.append(source_id)
+        for f in ("startTime", "endTime"):
+            tv = _coerce_time(item.get(f))
+            if tv is not None:
+                _track(tv)
         for s in item.get(sample_path) or []:
             t = _coerce_time(s.get(time_field))
             if t is None:
                 skipped += 1
                 continue
+            _track(t)
             values, missing = [], False
             for src, _, sql_type in val_cols:
                 v = cast_for_col(pick_scalar(s.get(src)), sql_type)
@@ -391,10 +405,22 @@ def _insert_samples(conn, schema, user_id, method, items):
     with conn.cursor() as cur:
         deleted = 0
         if source_ids:
+            # Time-bound the idempotency DELETE so chunk exclusion skips the
+            # compressed history (0015). Unbounded, the executor considers
+            # every chunk, and decompressing candidate batches for DML blows
+            # timescaledb.max_tuples_decompressed_per_dml_transaction (100k)
+            # on heart_rate_sample (1.4M compressed rows) — the whole /sync
+            # 500s and the client's Changes token stops advancing. The ±7d
+            # margin still clears stale rows of a record whose window shifted.
+            bound_sql, params = "", [source_ids, str(user_id)]
+            if t_min is not None:
+                margin = datetime.timedelta(days=7)
+                bound_sql = " AND time >= %s AND time <= %s"
+                params += [t_min - margin, t_max + margin]
             cur.execute(
                 f"DELETE FROM {table} WHERE source_id = ANY(%s::uuid[]) AND user_id = %s"
-                f" RETURNING source_id",
-                (source_ids, str(user_id)),
+                f"{bound_sql} RETURNING source_id",
+                params,
             )
             deleted = len({r[0] for r in cur.fetchall()})
         if rows:
