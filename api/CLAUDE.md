@@ -47,7 +47,7 @@ The endpoint is reachable from the Cloudflare Workers VPC binding only (no Servi
 
 Dispatched by `METHOD_SCHEMA[method].kind`:
 
-- **`samples`** (`heartRate`, `speed`, `power`, `stepsCadence`, `cyclingPedalingCadence`): flatten `item.samples[]` into N rows. Idempotency = `DELETE WHERE source_id = ANY(...) AND user_id = %s` then bulk INSERT in one transaction. The `user_id` predicate is required — without it a sync would delete another user's rows that happen to share a Health Connect `source_id`.
+- **`samples`** (`heartRate`, `speed`, `power`, `stepsCadence`, `cyclingPedalingCadence`): flatten `item.samples[]` into N rows. Idempotency = `DELETE WHERE source_id = ANY(...) AND user_id = %s AND time BETWEEN batch-min−7d AND batch-max+7d` then bulk INSERT in one transaction. The `user_id` predicate is required — without it a sync would delete another user's rows that happen to share a Health Connect `source_id`. The time bounds are required too — an unbounded DELETE considers every chunk, and decompressing candidate batches for DML exceeds `timescaledb.max_tuples_decompressed_per_dml_transaction` (100k) on `heart_rate_sample`, 500-ing the whole `/sync` and freezing the client's Changes token.
 - **`interval`** (steps, distance, sleepSession, …): one row per `metadata.id` in the destination table, with `start_at` + `end_at`. ON CONFLICT target is `(start_at, id)` for hypertables and `(id)` for plain tables — driven by `is_hypertable` in the schema dict.
 - **`instant`** (oxygenSaturation, weight, vo2Max, …): same as interval but the source has only `time` (no `endTime`) and the table has only `start_at`.
 
