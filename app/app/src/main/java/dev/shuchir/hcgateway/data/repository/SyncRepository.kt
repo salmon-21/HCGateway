@@ -107,7 +107,8 @@ class SyncRepository @Inject constructor(
     private suspend fun performSync(customStartDate: LocalDate?, customEndDate: LocalDate?): Boolean {
         cancelled = false
 
-        if (!healthConnectRepository.hasAllPermissions()) {
+        val granted = healthConnectRepository.grantedPermissions()
+        if (!healthConnectRepository.hasAllPermissions(granted)) {
             Timber.i("Sync skipped: Health Connect permissions not granted")
             _syncState.value = SyncState.Idle
             return true
@@ -129,18 +130,18 @@ class SyncRepository @Inject constructor(
                 val startTime = customStartDate.atStartOfDay(ZoneId.of("UTC")).toInstant()
                 val endTime = (customEndDate ?: LocalDate.now()).plusDays(1)
                     .atStartOfDay(ZoneId.of("UTC")).toInstant()
-                totalRecords = fullSync(startTime, endTime, typeResults, failedTypes)
+                totalRecords = fullSync(startTime, endTime, typeResults, failedTypes, granted)
             } else if (settings.fullSyncMode) {
                 Timber.i("Full sync (${DEFAULT_LOOKBACK_DAYS}d lookback)")
                 val startTime = Instant.now().minus(java.time.Duration.ofDays(DEFAULT_LOOKBACK_DAYS))
-                totalRecords = fullSync(startTime, Instant.now(), typeResults, failedTypes)
+                totalRecords = fullSync(startTime, Instant.now(), typeResults, failedTypes, granted)
             } else if (settings.changesToken.isNotBlank()) {
                 Timber.i("Delta sync")
-                totalRecords = deltaSync(settings.changesToken, typeResults, failedTypes)
+                totalRecords = deltaSync(settings.changesToken, typeResults, failedTypes, granted)
             } else {
                 Timber.i("Initial full sync (no changes token)")
                 val startTime = Instant.now().minus(java.time.Duration.ofDays(DEFAULT_LOOKBACK_DAYS))
-                totalRecords = fullSync(startTime, Instant.now(), typeResults, failedTypes)
+                totalRecords = fullSync(startTime, Instant.now(), typeResults, failedTypes, granted)
             }
 
             // Ensure minimum display time for progress animation
@@ -181,6 +182,7 @@ class SyncRepository @Inject constructor(
         endTime: Instant,
         typeResults: MutableList<TypeSyncResult>,
         failedTypes: MutableList<String> = mutableListOf(),
+        granted: Set<String>,
     ): Int {
         val completed = AtomicInteger(0)
         val totalRecordsAtomic = AtomicInteger(0)
@@ -264,7 +266,7 @@ class SyncRepository @Inject constructor(
         // those records are already uploaded and skip them.
         if (failedTypes.isEmpty()) {
             try {
-                val token = healthConnectRepository.getChangesToken()
+                val token = healthConnectRepository.getChangesToken(granted)
                 preferencesRepository.updateChangesToken(token)
                 Timber.i("Changes token saved")
             } catch (e: Exception) {
@@ -281,6 +283,7 @@ class SyncRepository @Inject constructor(
         changesToken: String,
         typeResults: MutableList<TypeSyncResult>,
         failedTypes: MutableList<String> = mutableListOf(),
+        granted: Set<String>,
     ): Int {
         var totalRecords = 0
 
@@ -289,7 +292,7 @@ class SyncRepository @Inject constructor(
         if (result.tokenExpired) {
             preferencesRepository.updateChangesToken("")
             val startTime = Instant.now().minus(java.time.Duration.ofDays(DEFAULT_LOOKBACK_DAYS))
-            return fullSync(startTime, Instant.now(), typeResults, failedTypes)
+            return fullSync(startTime, Instant.now(), typeResults, failedTypes, granted)
         }
 
         val completed = AtomicInteger(0)
