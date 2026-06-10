@@ -192,7 +192,10 @@ class SyncRepository @Inject constructor(
             RECORD_TYPES.map { type ->
                 async(kotlinx.coroutines.Dispatchers.IO) {
                     try {
-                        val channel = kotlinx.coroutines.channels.Channel<Pair<com.google.gson.JsonElement, Int>>(1)
+                        // Capacity 3: with 1 the reader blocked on every page until its
+                        // upload finished, serialising read and upload on slow networks.
+                        // 3 pages ≈ a few MB of JSON at most — bounded memory, real overlap.
+                        val channel = kotlinx.coroutines.channels.Channel<Pair<com.google.gson.JsonElement, Int>>(3)
                         var typeTotal = 0
 
                         var readerError: Exception? = null

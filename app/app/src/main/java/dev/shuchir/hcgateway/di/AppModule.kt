@@ -14,6 +14,7 @@ import dev.shuchir.hcgateway.data.remote.ApiService
 import dev.shuchir.hcgateway.data.remote.AuthAuthenticator
 import dev.shuchir.hcgateway.data.remote.AuthInterceptor
 import dev.shuchir.hcgateway.data.remote.DynamicBaseUrlInterceptor
+import dev.shuchir.hcgateway.data.remote.GzipRequestInterceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -42,10 +43,12 @@ object AppModule {
     fun provideOkHttpClient(
         dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor,
         authInterceptor: AuthInterceptor,
+        gzipRequestInterceptor: GzipRequestInterceptor,
         authAuthenticator: AuthAuthenticator,
     ): OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(dynamicBaseUrlInterceptor)
         .addInterceptor(authInterceptor)
+        .addInterceptor(gzipRequestInterceptor)
         .addInterceptor(HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         })
