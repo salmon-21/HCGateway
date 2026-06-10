@@ -14,6 +14,7 @@ See @README.md for the project overview. Dependencies live in `app/gradle/libs.v
 
 - **Theme switching** uses `AppCompatDelegate`, not Compose state — instant, no recomposition delay.
 - **OkHttp AuthInterceptor** auto-refreshes on **403** (this API returns 403, not 401).
+- **Request bodies are gzipped** (`GzipRequestInterceptor`, ≥1 KB only). The API inflates them in `GzipRequestMiddleware` (api/main.py) — the server must be deployed before an app build that sends gzip.
 - **Streaming sync**: `readRecordsPaged` feeds a Channel pipeline so reads and uploads overlap and memory stays bounded.
 - **Idle notification** uses `NotificationManager.notify()` directly, *not* a foreground service — avoids Android 15's 6-hour `dataSync` foreground limit.
 - **Reading data older than 30 days** requires `PERMISSION_READ_HEALTH_DATA_HISTORY`.
