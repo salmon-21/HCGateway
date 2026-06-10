@@ -402,17 +402,17 @@ def cast_for_col(v, sql_type):
 NULLABLE_COLS = {
     "skin_temperature": {"baseline_c"},
     "sleep_session": {"stages"},
-    "vitality_score": {"total_score", "sleep_score", "activity_score", "shr_score"},
+    # vitalityScore / nutrition: EVERY value column is optional in the payload,
+    # so each nullable set is exactly its value_cols dst names — derive them
+    # rather than hand-listing names that would silently drift (a dropped name
+    # skips records → re-blocks the Changes token).
+    "vitality_score": {dst for _, dst, _ in METHOD_SCHEMA["vitalityScore"]["value_cols"]},
+    "nutrition": {dst for _, dst, _ in METHOD_SCHEMA["nutrition"]["value_cols"]},
     # bloodPressure: HC sends only systolic+diastolic, never pulse.
     "blood_pressure": {"pulse"},
     # planned exercise: blocks may be absent/empty (exercise_type is required,
     # so this is a strict subset of value_cols — keep it explicit).
     "planned_exercise_session": {"blocks"},
-    # nutrition: EVERY value column is optional in the payload, so the nullable
-    # set is exactly its value_cols dst names — derive it rather than hand-listing
-    # 17 names that would silently drift (a dropped name skips records → re-blocks
-    # the Changes token).
-    "nutrition": {dst for _, dst, _ in METHOD_SCHEMA["nutrition"]["value_cols"]},
 }
 
 
