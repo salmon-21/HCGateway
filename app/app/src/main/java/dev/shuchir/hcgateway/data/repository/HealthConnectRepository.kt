@@ -50,9 +50,18 @@ class HealthConnectRepository @Inject constructor(
         }.toSet()
     }
 
-    suspend fun hasAllPermissions(): Boolean {
-        val client = healthConnectClient ?: return false
-        val granted = client.permissionController.getGrantedPermissions()
+    // The IPC behind getGrantedPermissions costs ~100-200ms; sync fetches the set
+    // once and passes it to hasAllPermissions/getChangesToken instead of each
+    // re-fetching it.
+    suspend fun grantedPermissions(): Set<String> {
+        val client = healthConnectClient ?: return emptySet()
+        return client.permissionController.getGrantedPermissions()
+    }
+
+    suspend fun hasAllPermissions(): Boolean = hasAllPermissions(grantedPermissions())
+
+    fun hasAllPermissions(granted: Set<String>): Boolean {
+        if (healthConnectClient == null) return false
         if (granted.isEmpty()) return false
         return requiredPermissions.all { it in granted || isUnsupportedOnDevice(it, granted) }
     }
@@ -115,14 +124,16 @@ class HealthConnectRepository @Inject constructor(
         return RecordSerializer.serializeRecords(records)
     }
 
-    suspend fun getChangesToken(): String {
+    suspend fun getChangesToken(granted: Set<String>? = null): String {
         val client = healthConnectClient ?: throw IllegalStateException("Health Connect not available")
         // Only request changes for record types Health Connect grants permission for.
         // Some types (e.g. MindfulnessSession) cause SecurityException even when not requested.
-        val granted = client.permissionController.getGrantedPermissions()
+        // A stale passed-in set is fine: a mid-sync revocation surfaces as the same
+        // SecurityException the Samsung-rejection retry below already drops and retries.
+        val grantedSet = granted ?: client.permissionController.getGrantedPermissions()
         var supportedTypes = RECORD_TYPES.filter { type ->
             val perm = HealthPermission.getReadPermission(type.recordClass)
-            perm in granted
+            perm in grantedSet
         }.map { it.recordClass }.toMutableSet()
 
         // Samsung Health Connect occasionally rejects a granted record type at
