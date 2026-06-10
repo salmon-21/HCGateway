@@ -32,7 +32,12 @@ class HealthConnectRepository @Inject constructor(
                 HealthPermission.getReadPermission(type.recordClass),
                 HealthPermission.getWritePermission(type.recordClass),
             )
-        }.toSet() + setOf(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY)
+        }.toSet() + setOf(
+            HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY,
+            // Without this, WorkManager-driven syncs hit a SecurityException from
+            // getChangeLogs whenever the app is backgrounded.
+            HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND,
+        )
     }
 
     // Required permissions for hasAllPermissions check (excludes optional permissions)
