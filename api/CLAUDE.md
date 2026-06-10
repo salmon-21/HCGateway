@@ -53,6 +53,8 @@ Dispatched by `METHOD_SCHEMA[method].kind`:
 
 `_pick_scalar` normalises Health Connect unit-object values (e.g. `distance.inMeters`) at write time — flattened to the SI scalar matching the column.
 
+**Sleep matviews are refreshed async (0016).** `sleep_session` carries only a mark-dirty statement trigger (bumps `sleep_stats_refresh_state.changes`, <1 ms); the `sleep_stats_refresh_if_dirty` TimescaleDB job refreshes `sleep_rolling_stats` + `sleep_stage_daily` every 5 min iff the counter moved. Never put a matview REFRESH back inside the /sync transaction — it cost ~5 s per sync and a refresh failure 500s the sync, which freezes the client's Changes token.
+
 **Record counts (0014).** `/counts` does not aggregate live — the per-(user, method) totals live in `record_counts` and are bumped by `_bump_count` on the same cursor as each write (samples sync: ±distinct source_ids; record upsert: rows where `RETURNING (xmax = 0)` is true; server delete: −removed). Anything that writes the data tables *without* going through these paths (the `backfill/` importers COPY directly) leaves the counts stale — re-run the seed block in `pg/migrations/0014_record_counts.sql` afterwards (it's idempotent: `ON CONFLICT DO UPDATE` with a fresh recount). The seed SQL is generated from `METHOD_SCHEMA`; regenerate when adding types.
 
 **Full type coverage (0012/0013).** `METHOD_SCHEMA` now has an entry for *every* record type the Android client sends (43 keys: all 41 client types + backfill-only `stress`/`vitalityScore`). This matters operationally: a `/sync/<type>` 400 ("unknown method") makes the client mark the type failed and *refuse to advance its Changes API token*, so the same window re-syncs forever. Each new type is a plain per-type table (0012). Gotchas baked in:

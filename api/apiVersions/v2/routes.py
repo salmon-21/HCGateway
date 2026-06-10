@@ -504,8 +504,8 @@ def _insert_records(conn, schema, user_id, method, items):
     conflict = "(start_at, id)" if is_hyper else "(id)"
     updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("id", "start_at"))
     row_ph = "(" + ",".join(["%s"] * len(cols)) + ")"
-    # One statement for the whole batch: the AFTER-STATEMENT matview-refresh
-    # trigger on sleep_session then fires once per /sync, not once per row.
+    # One statement for the whole batch: sleep_session's AFTER-STATEMENT
+    # mark-dirty trigger (0016) then fires once per /sync, not once per row.
     sql = (
         f"INSERT INTO {table} ({','.join(cols)}) "
         f"VALUES {','.join([row_ph] * len(rows))} "
