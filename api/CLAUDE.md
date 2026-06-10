@@ -24,7 +24,7 @@ User `id` is `uuid` (PG-generated). The legacy Mongo ObjectId-as-string scheme w
 | DELETE | `/revoke` | bearer | clears tokens |
 | GET | `/health` | none | liveness `{"status":"ok"}` |
 | GET | `/status` | none (VPC binding) | DB/api/dataSync health + streak |
-| GET | `/counts` | bearer | per-table row counts (samples → `count(DISTINCT source_id)`) |
+| GET | `/counts` | bearer | reads `record_counts` summary (0014), maintained by the write paths |
 | POST | `/sync/<method>` | bearer | upsert records via generic `_insert_samples` / `_insert_records` |
 | POST | `/fetch/<method>` | bearer | read records, response shape `{_id, id, app, start, end, data}` |
 | DELETE | `/sync/<method>` | bearer | server-side delete |
@@ -52,6 +52,8 @@ Dispatched by `METHOD_SCHEMA[method].kind`:
 - **`instant`** (oxygenSaturation, weight, vo2Max, …): same as interval but the source has only `time` (no `endTime`) and the table has only `start_at`.
 
 `_pick_scalar` normalises Health Connect unit-object values (e.g. `distance.inMeters`) at write time — flattened to the SI scalar matching the column.
+
+**Record counts (0014).** `/counts` does not aggregate live — the per-(user, method) totals live in `record_counts` and are bumped by `_bump_count` on the same cursor as each write (samples sync: ±distinct source_ids; record upsert: rows where `RETURNING (xmax = 0)` is true; server delete: −removed). Anything that writes the data tables *without* going through these paths (the `backfill/` importers COPY directly) leaves the counts stale — re-run the seed block in `pg/migrations/0014_record_counts.sql` afterwards (it's idempotent: `ON CONFLICT DO UPDATE` with a fresh recount). The seed SQL is generated from `METHOD_SCHEMA`; regenerate when adding types.
 
 **Full type coverage (0012/0013).** `METHOD_SCHEMA` now has an entry for *every* record type the Android client sends (43 keys: all 41 client types + backfill-only `stress`/`vitalityScore`). This matters operationally: a `/sync/<type>` 400 ("unknown method") makes the client mark the type failed and *refuse to advance its Changes API token*, so the same window re-syncs forever. Each new type is a plain per-type table (0012). Gotchas baked in:
 - A method's `kind` must match how Health Connect emits the record. `heartRateVariabilityRmssd` and `respiratoryRate` are **instant** (the client sends `time`, not `startTime`/`endTime`) — they were wrongly `interval` and skipped every row; their tables' `end_at` was made nullable (0013) so the instant path (no `end_at`) inserts.

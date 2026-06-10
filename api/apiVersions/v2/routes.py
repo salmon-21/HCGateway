@@ -304,25 +304,15 @@ def status():
 
 @v2.get("/counts")
 def counts():
+    # Reads the record_counts summary (0014) maintained by the write paths —
+    # live aggregates over the hypertables took ~1.5 s on the RPi.
     user_id = str(g.user)
+    rows = fetch_all("SELECT method, n FROM record_counts WHERE user_id = %s", (user_id,))
+    stored = {r["method"]: r["n"] for r in rows}
     result = {}
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            for method, schema in METHOD_SCHEMA.items():
-                table = schema["table"]
-                if schema["kind"] == "samples":
-                    sql = f"SELECT count(DISTINCT source_id) FROM {table} WHERE user_id = %s"
-                else:
-                    sql = f"SELECT count(*) FROM {table} WHERE user_id = %s"
-                try:
-                    cur.execute(sql, (user_id,))
-                    n = cur.fetchone()[0]
-                except Exception as e:
-                    print(f"counts {method} failed: {e}")
-                    n = None
-                if n is not None:
-                    display = method[0].upper() + method[1:]
-                    result[display] = n
+    for method in METHOD_SCHEMA:
+        display = method[0].upper() + method[1:]
+        result[display] = stored.get(method, 0)
     return jsonify(result), 200
 
 
@@ -330,7 +320,19 @@ def counts():
 # Sync (write) — generic dispatch driven by METHOD_SCHEMA
 # ---------------------------------------------------------------------------
 
-def _insert_samples(conn, schema, user_id, items):
+def _bump_count(cur, user_id, method, delta):
+    """Adjust the record_counts summary that /counts reads. Runs on the write
+    path's cursor so the bump commits/rolls back with the data it counts."""
+    if delta == 0:
+        return
+    cur.execute(
+        "INSERT INTO record_counts (user_id, method, n) VALUES (%s, %s, %s) "
+        "ON CONFLICT (user_id, method) DO UPDATE SET n = record_counts.n + EXCLUDED.n",
+        (user_id, method, delta),
+    )
+
+
+def _insert_samples(conn, schema, user_id, method, items):
     """For kind='samples': DELETE by source_id then INSERT flattened rows.
 
     Returns (written, skipped). Samples missing the value column or with
@@ -370,21 +372,28 @@ def _insert_samples(conn, schema, user_id, items):
 
     cols = ["time", "user_id", "source_id", "app"] + [c[1] for c in val_cols]
     with conn.cursor() as cur:
+        deleted = 0
         if source_ids:
             cur.execute(
-                f"DELETE FROM {table} WHERE source_id = ANY(%s::uuid[]) AND user_id = %s",
+                f"DELETE FROM {table} WHERE source_id = ANY(%s::uuid[]) AND user_id = %s"
+                f" RETURNING source_id",
                 (source_ids, str(user_id)),
             )
+            deleted = len({r[0] for r in cur.fetchall()})
         if rows:
             # COPY beats executemany by ~20x for the high-volume sample tables.
             # The preceding DELETE clears conflicts, so no ON CONFLICT is needed.
             with cur.copy(f"COPY {table} ({','.join(cols)}) FROM STDIN") as copy:
                 for r in rows:
                     copy.write_row(r)
+        # Distinct-source_id delta: every batch id present beforehand was just
+        # deleted, so net change = re-/newly-written ids minus deleted ids.
+        written_ids = len({r[2] for r in rows})
+        _bump_count(cur, str(user_id), method, written_ids - deleted)
     return len(rows), skipped
 
 
-def _insert_records(conn, schema, user_id, items):
+def _insert_records(conn, schema, user_id, method, items):
     """For kind='interval' or 'instant': upsert 1 row per source doc.
 
     Returns (written, skipped). Rows missing a NOT NULL value column are
@@ -457,11 +466,16 @@ def _insert_records(conn, schema, user_id, items):
     sql = (
         f"INSERT INTO {table} ({','.join(cols)}) "
         f"VALUES {','.join([row_ph] * len(rows))} "
-        f"ON CONFLICT {conflict} DO UPDATE SET {updates}"
+        f"ON CONFLICT {conflict} DO UPDATE SET {updates} "
+        # xmax = 0 ⇔ the row was INSERTed (an ON CONFLICT update stamps xmax);
+        # works through TimescaleDB chunk routing too.
+        f"RETURNING (xmax = 0)"
     )
     params = [r[c] for r in rows for c in cols]
     with conn.cursor() as cur:
         cur.execute(sql, params)
+        inserted = sum(1 for (is_insert,) in cur.fetchall() if is_insert)
+        _bump_count(cur, str(user_id), method, inserted)
     return len(rows), skipped
 
 
@@ -485,9 +499,9 @@ def sync(method):
         with pool.connection() as conn:
             t_conn = time.monotonic()
             if schema["kind"] == "samples":
-                written, skipped = _insert_samples(conn, schema, g.user, data)
+                written, skipped = _insert_samples(conn, schema, g.user, norm, data)
             else:
-                written, skipped = _insert_records(conn, schema, g.user, data)
+                written, skipped = _insert_records(conn, schema, g.user, norm, data)
         t_done = time.monotonic()
     except Exception as e:
         print(f"sync {norm} failed: {e}", flush=True)
@@ -587,9 +601,16 @@ def del_from_db(method):
     with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"DELETE FROM {table} WHERE {col} = ANY(%s::uuid[]) AND user_id = %s",
+                f"DELETE FROM {table} WHERE {col} = ANY(%s::uuid[]) AND user_id = %s"
+                f" RETURNING {col}",
                 (uuids, user_id),
             )
+            if schema["kind"] == "samples":
+                # n counts distinct source_ids, not sample rows.
+                removed = len({r[0] for r in cur.fetchall()})
+            else:
+                removed = cur.rowcount
+            _bump_count(cur, user_id, norm, -removed)
     return jsonify({'success': True}), 200
 
 
