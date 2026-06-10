@@ -8,3 +8,4 @@ psycopg[binary]==3.2.10
 psycopg-pool==3.2.6
 python-dateutil==2.9.0.post0
 tzdata==2026.2
+gunicorn==23.0.0

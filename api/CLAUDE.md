@@ -64,7 +64,8 @@ Dispatched by `METHOD_SCHEMA[method].kind`:
 
 - All persisted times are `timestamptz` (UTC under the hood). Day-boundary logic uses `AT TIME ZONE 'Asia/Tokyo'` where relevant; never persist a tz-shifted timestamp.
 - Token endpoints use UTC-aware `datetime.now(timezone.utc)` to avoid server-TZ surprises; legacy naive `expiry` values are coerced with `.replace(tzinfo=utc)` before comparing.
-- Connection pool sized `min=1 max=10` for single-worker Flask. Bump if we move to gunicorn with workers.
+- Connection pool sized `min=1 max=10`; gunicorn runs 1 worker × 4 threads (Dockerfile). Keep workers at 1 — the in-process caches (streak, `_last_sleep_count`-style globals) assume a single process.
+- **Compression (0015):** the five high-volume hypertables compress chunks older than 30 days (heart_rate_sample went 476 MB → 13 MB). Consequences: unbounded `max(time)`/`max(start_at)` scans walk every compressed chunk (~700 ms) — recency-floor such probes (`> now() - interval '35 days'`, see /status); and writes into >30-day-old ranges (Force Sync over old dates, `backfill/` importers) decompress touched batches in place and run slow — the policy recompresses them on its next pass.
 - Don't reintroduce `print(request.json)`-style debug — keep handler logs to one `f"{method}: {n} records"` per call.
 
 ## Do NOT

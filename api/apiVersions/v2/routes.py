@@ -45,10 +45,22 @@ def _coerce_time(v):
     return v
 
 
+# /status is polled every 5 min by the moromiso Worker; the streak query
+# (DISTINCT days over heart_rate_hourly) costs ~70 ms of its ~90 ms total.
+# A day-granularity metric doesn't need recomputing per poll.
+_STREAK_CACHE_TTL = 900
+_streak_cache = {}
+
+
 def _heartrate_streak(user_id, tz=STATUS_TZ, max_days=365):
     """Consecutive tz-calendar-days (today inclusive) with heart_rate data.
     Counts from yesterday when today has no data so the streak doesn't drop
-    to 0 in the early morning."""
+    to 0 in the early morning. Cached per (user_id, tz) for 900 s."""
+    cache_key = (str(user_id), tz.key)
+    cached = _streak_cache.get(cache_key)
+    if cached and time.monotonic() - cached[0] < _STREAK_CACHE_TTL:
+        return cached[1]
+
     now_local = datetime.datetime.now(tz)
     today_local = now_local.date()
     cutoff = now_local - datetime.timedelta(days=max_days)
@@ -72,6 +84,7 @@ def _heartrate_streak(user_id, tz=STATUS_TZ, max_days=365):
             streak += 1
         else:
             break
+    _streak_cache[cache_key] = (time.monotonic(), streak)
     return streak
 
 
@@ -231,8 +244,11 @@ def status():
     handler_t0 = time.monotonic()
     components = {"api": {"status": "ok"}, "db": {}, "dataSync": {}}
 
-    # `WHERE time = (SELECT max(time))` keeps TimescaleDB on the latest chunk;
-    # `ORDER BY time DESC LIMIT 1` instead planned to a parallel seq scan.
+    # The 35-day floor prunes to the recent (uncompressed) chunks — since 0015
+    # an unbounded max(time) walks every compressed chunk (~700 ms). Freshness
+    # classification only needs hours-old data, so the floor can't change the
+    # verdict; if the newest data is older than 35 days the probe finds nothing
+    # and the verdict falls through to "no_heart_rate_data" (still "down").
     user_id = None
     latest_per_type = {}
     try:
@@ -240,8 +256,8 @@ def status():
         row = fetch_one(
             "SELECT user_id::text AS user_id, time AS latest "
             "FROM heart_rate_sample "
-            "WHERE time = (SELECT max(time) FROM heart_rate_sample) "
-            "LIMIT 1"
+            "WHERE time > now() - interval '35 days' "
+            "ORDER BY time DESC LIMIT 1"
         )
         ms = int((time.time() - t0) * 1000)
         components["db"] = {"status": "ok", "responseMs": ms}
@@ -269,7 +285,8 @@ def status():
                               ("distance", "distance"),
                               ("totalCaloriesBurned", "total_calories_burned")):
             row = fetch_one(
-                f"SELECT max(start_at) AS latest FROM {table} WHERE user_id = %s",
+                f"SELECT max(start_at) AS latest FROM {table} "
+                f"WHERE user_id = %s AND start_at > now() - interval '35 days'",
                 (user_id,),
             )
             if row and row["latest"]:
