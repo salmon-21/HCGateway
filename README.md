@@ -4,179 +4,54 @@
 > **This is a personal fork** of [ShuchirJ/HCGateway](https://github.com/ShuchirJ/HCGateway), kept here for the author's own deployment.
 >
 > - **I don't have the bandwidth to maintain this as a shared project in 2026.** Issues, discussions, and PRs from outside users are not triaged.
-> - **Entirely vibecoded with [Claude Code](https://claude.com/claude-code)** — effectively every commit on this fork is AI-authored (the `Co-Authored-By` trailer is on most of them but undercounts; the work itself is AI throughout). I don't claim deep understanding of every line; treat this as a starting point, not a vetted reference implementation. Pay particular attention to anything security-sensitive (e.g. the Fernet key derivation flagged in [#63](https://github.com/ShuchirJ/HCGateway/issues/63) upstream).
+> - **Entirely vibecoded with [Claude Code](https://claude.com/claude-code)** — effectively every commit on this fork is AI-authored (the `Co-Authored-By` trailer is on most of them but undercounts; the work itself is AI throughout). I don't claim deep understanding of every line; treat this as a starting point, not a vetted reference implementation. Pay particular attention to anything security-sensitive (e.g. the Fernet key derivation flagged in [#63](https://github.com/ShuchirJ/HCGateway/issues/63) upstream — Fernet itself is gone from this fork, but audit before trusting).
 > - **No upstream parity:** the Android app has been rewritten in Jetpack Compose, the API/DB has been ported from MongoDB to PostgreSQL/TimescaleDB on `personal`, and a Grafana Cloud dashboard plus JST-specific assumptions are bundled.
 > - **Branches:**
 >   - `personal` (default) — what I run. PostgreSQL/TimescaleDB; not upstream-compatible.
 >   - `compose-rewrite` — Jetpack Compose Android app on top of the upstream MongoDB API (with a small `/counts` endpoint added). **Snapshot only**, no further updates planned.
 > - **If you want a maintained version, fork it.** The upstream repo has also been quiet for several months. Please feel free.
 
-HCGateway is a platform to let developers connect to the Health Connect API on Android via a REST API. You can view the documentation for the REST API [here](https://hcgateway.shuchir.dev/)
+HCGateway syncs Android Health Connect data to a self-hosted REST API. The upstream project and its documentation live at [hcgateway.shuchir.dev](https://hcgateway.shuchir.dev/); everything below describes **this fork**.
 
-<a href="https://www.buymeacoffee.com/shuchir" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a> 
+## How this fork works
 
-# How it works
-The platform consists of two parts:
-- A REST API/server
-- A mobile application that pings the server periodically
-
-> [!NOTE]
-> This project is still in development. The API may change without notice. The mobile application is also in development and may not work as expected. Please report any issues you find.
-
-> [!IMPORTANT]
-> The database was recently migrated from Appwrite to MongoDB. If you were using the Appwrite version, you will need to migrate your data to the new database. You can find the migration script in the `scripts/` folder. You will need to install the `appwrite` and `pymongo` libraries to run the script, then run the script with the following command: `python3 migrate_1.5.0.py`.
-
-
-## How it Works
-- The mobile application pings the server every 2 hours to send data. The following data types are supported-
-    - Active Calories Burned (`activeCaloriesBurned`)
-    - Basal Body Temperature (`basalBodyTemperature`)
-    - Basal Metabolic Rate (`basalMetabolicRate`)
-    - Blood Glucose (`bloodGlucose`)
-    - Blood Pressure (`bloodPressure`)
-    - Body Fat (`bodyFat`)
-    - Body Temperature (`bodyTemperature`)
-    - Bone Mass (`boneMass`)
-    - Cervical Mucus (`cervicalMucus`)
-    - Distance (`distance`)
-    - Exercise (`exerciseSession`)
-    - Elevation Gained (`elevationGained`)
-    - Floors Climbed (`floorsClimbed`)
-    - Heart Rate (`heartRate`)
-    - Height (`height`)
-    - Hydration (`hydration`)
-    - Lean Body Mass (`leanBodyMass`)
-    - Menstruation Flow (`menstruationFlow`)
-    - Menstruation Period (`menstruationPeriod`)
-    - Nutrition (`nutrition`)
-    - Ovulation Test (`ovulationTest`)
-    - Oxygen Saturation (`oxygenSaturation`)
-    - Power (`power`)
-    - Respiratory Rate (`respiratoryRate`)
-    - Resting Heart Rate (`restingHeartRate`)
-    - Sleep (`sleepSession`)
-    - Speed (`speed`)
-    - Steps (`steps`)
-    - StepsCadence (`stepsCadence`)
-    - Total Calories Burned (`totalCaloriesBurned`)
-    - VO2 Max (`vo2Max`)
-    - Weight (`weight`)
-    - Wheelchair Pushes (`wheelchairPushes`)
-
-> [!NOTE]
-> **On this fork, the API persists _every_ Health Connect record type the Android app reads** — each in its own PostgreSQL table (`pg/migrations/0012`). That includes types the list above omits: Body Water Mass (`bodyWaterMass`), Cycling Pedaling Cadence (`cyclingPedalingCadence`), Heart Rate Variability (`heartRateVariabilityRmssd`), Intermenstrual Bleeding (`intermenstrualBleeding`), Mindfulness Session (`mindfulnessSession`), Planned Exercise Session (`plannedExerciseSession`), Sexual Activity (`sexualActivity`), and Skin Temperature (`skinTemperature`). Previously the API only knew ~20 types and returned 400 for the rest, which stalled the client's Changes-token sync.
-
-- Each sync takes approximatly 15 minutes
-- The server encrypts the data using Fernet encryption, then stores it in a mongo database.
-- The server exposes an API to let developers login and get the data for their users.
-
-The platform allows two-way sync, which means you can make changes to your local Health Connect store remotely via REST api.
-
-## Get Started
-- There is a live instance hosted at https://api.hcgateway.shuchir.dev/ that you can use. You can also host your own instance. To learn more on Self Hosting, skip down to the Self Hosting section.
-> [!IMPORTANT]
-> **Use the hosted instance at your own risk. By using the hosted server, you acknowledge all responsibility is waived from the server owner.**
-- You can install the mobile application through the APK file. You can find the latest APK file in the releases section of this repository.
-- The minimum requirement for the APK file is Android Oreo (8.0)
-- Once you install the Android APK file, signup by entering a username and password
-- Once you see a screen showing your user id, you have successfully signed up. Your data will sync in 2 hours. This is customizable. You also have the option to force a sync any time through the application.
-
-## Database
-### Users Structure
 ```
-users {
-    _id: string
-    username: string
-    password: string
-    expiry: datetime
-    token: string
-    refresh: string
-}
-```
-> [!NOTE]
-> The password of the user encrypted using Argon 2 format. The password is never stored as is, and cannot be retrieved through any API.
-
-### Database Structure
-```
-hcgateway_[user_id]: string {
-    dataType: string {
-        _id: string
-        data: string
-        id: string
-        start: datetime
-        end: datetime
-        app: string
-    }
-}
+Android (Samsung Health etc. → Health Connect)
+  → HCGateway app (app/, Jetpack Compose + Kotlin)
+  → Flask API (api/, gunicorn) — port 6644
+  → PostgreSQL / TimescaleDB (pg/migrations/)
+  → Grafana Cloud (via PDC agent, optional)
 ```
 
-### Parameters
-- `$id` - The ID of the object. 
-- `data` - The data of the object encrypted using Fernet. When asked for through the API, the data will be decrypted for you using the user's hashed password found from the user id.
-- `id` - The ID of the object- This is the same as `_id` and is only kept for backward compatibility. May be removed in future versions.
-- `start` - The start date and time of the object
-- `end` - The end date and time of the object. Might not be present for some objects.
-- `app` - The app package string that the object was synced from.
-
+- The app syncs periodically via WorkManager (delta sync through the Health Connect Changes API) and supports manual Force Sync over a date range.
+- **Every record type the app reads is persisted**, each in its own PostgreSQL table (`pg/migrations/0012`) — an unknown type would 400 and stall the client's Changes-token sync, so full coverage is load-bearing, not cosmetic.
+- High-volume types (heart rate, speed samples, steps, distance, calories) are TimescaleDB hypertables with native compression on chunks older than 30 days.
+- Data is stored **unencrypted** in PostgreSQL (upstream's Fernet layer was removed; protect the database itself). Passwords are Argon2-hashed in the `users` table and are never retrievable.
+- Server → device push (upstream's Firebase/FCM `/push` and `/delete`) was removed: the upstream service account was never deployed and the device-side handler was a stub, so the path was dead end-to-end. Re-add both sides if you want two-way sync.
 
 ## REST API
-The documentation for the REST API can be found at https://hcgateway.shuchir.dev/
 
-## Mobile Application
-The mobile application is a simple Android application that pings the server every 2 hours (customizable) to send data. It starts a foreground service to do this, and the service will run even if the application is closed. The application is written in React Native.
+The accurate endpoint reference for this fork is the table in [`api/CLAUDE.md`](api/CLAUDE.md) (login/refresh/revoke, `/sync/<method>`, `/fetch/<method>`, `/counts`, `/health`, `/status`). The upstream OpenAPI docs do not match this fork.
 
-## Self Hosting
-You can self host the server and database for full control.
+## Self hosting
 
-> **Firebase / FCM was removed on this fork.** The upstream `/push` and
-> `/delete` endpoints relied on a Firebase admin service account that was
-> never deployed (only an empty placeholder was committed), and the
-> Android side `handlePush` was a stub, so the server → device push path
-> was dead end-to-end. The Firebase deps, `google-services.json`, the
-> FCM service, and the `users.fcm_token` column are all gone. Re-add
-> them on both sides if you want two-way sync.
+### Server (Docker)
 
-### Docker (recommended)
-1. **Prerequisites**\
-    Ensure that you have Docker and Docker Compose installed on your system.
-
-2. **Setting up the Environment**
-
-   - You’ll need to configure environment variables before starting the services.
-   - Copy the provided `.env.example` file to `.env` inside the `api/` directory and configure it as necessary. When setting the `MONGO_URI` variable, the following format should be used: `mongodb://<username>:<password>@db:27017/hcgateway?authSource=admin`
-   - Set the mongo DB username and password in the `docker-compose.yml` file as well.
-
-3. **Running the Containers with Docker Compose**\
-    The project uses Docker Compose for easier container orchestration. To run the API using Docker Compose, run the following command:
-    ```bash
-   docker-compose up -d
-   ```
-You can access the API at `http://localhost:6644`
-
-### Manual
-#### Server
-- Prerequisites: Python 3, mongoDB
-- Clone this repository
-- `cd` into the api/ folder
-- run `pip install -r requirements.txt`
-- rename `.env.example` to `.env` and fill in the values
-- run `python3 main.py` to start the server
-
-#### Mobile Application
-- Prerequisites: Node.js 18+, npm, Android Studio (SDK, build-tools, platform-tools), Java 17
-- in another window/tab, `cd` into the app/ folder
-- run `npm install`
-- If you wish to remove sentry:
+```bash
+cp api/.env.example api/.env   # set POSTGRES_URI etc.
+docker compose up -d           # postgres + api
 ```
-yarn remove @sentry/react-native
-npx @sentry/wizard -i reactNative -p android --uninstall
-```
-- If you wish to change sentry to your own instance:
-    - Change the `dsn` in `App.js` to your own DSN
-    - Change the server, org name, and project name in app.json
-    - Change these details again in android/sentry.properties
-    - Change the DSN in the AndroidManifest.xml
-- run `npx patch-package` to apply a patch to the foreground service library
-- run `npm run android` to start the application, or `cd android && ./gradlew assembleRelease` to build the APK file
-    - It is also possible to now use eas build to build the APK file. You can find more at https://docs.expo.dev/build/eas-build/ **NOTE: This must be a local build, since you need to run patch-package before building the APK file.**
 
+The API listens on `http://localhost:6644`. Migrations in `pg/migrations/` are applied automatically on first database init; for migrations added after that, use `scripts/apply-pg-migrations.sh`. `scripts/backup-pg.sh` is a cron-ready weekly `pg_dump`.
+
+### Android app
+
+Prerequisites: Android Studio (SDK), Java 17, a device with Health Connect.
+
+```bash
+cd app
+./gradlew installDebug      # build + install to a connected device
+./gradlew assembleRelease   # or build an APK
+```
+
+Sentry is opt-in at runtime (in-app toggle); to use your own instance change the DSN in `AndroidManifest.xml`, and put the upload token in the gitignored `app/sentry.properties`.
