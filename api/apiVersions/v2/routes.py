@@ -28,6 +28,17 @@ STATUS_TZ = ZoneInfo(os.environ.get("STATUS_TZ", "UTC"))
 # its own. Normal delta syncs are well under it; only full-sync-scale batches trip.
 SLOW_SYNC_MS = 1000
 
+# 0015 compresses hypertable chunks once fully older than 30 days. Queries and
+# DML that don't need compressed history must say so explicitly, or they walk /
+# decompress every chunk. Both constants track that 30-day policy — change them
+# together with it.
+#   PROBE_FLOOR_DAYS: /status freshness probes; 30 + 5 days of chunk-boundary
+#   slack. An unbounded max(time) costs ~700 ms vs ~50 ms floored.
+#   SAMPLES_DELETE_MARGIN: padding around a samples batch's time range for the
+#   idempotency DELETE, clearing stale rows of a record whose window shifted.
+PROBE_FLOOR_DAYS = 35
+SAMPLES_DELETE_MARGIN = datetime.timedelta(days=7)
+
 v2 = Blueprint('v2', __name__, url_prefix='/api/v2/')
 
 
@@ -244,11 +255,11 @@ def status():
     handler_t0 = time.monotonic()
     components = {"api": {"status": "ok"}, "db": {}, "dataSync": {}}
 
-    # The 35-day floor prunes to the recent (uncompressed) chunks — since 0015
-    # an unbounded max(time) walks every compressed chunk (~700 ms). Freshness
+    # PROBE_FLOOR_DAYS prunes to the recent (uncompressed) chunks. Freshness
     # classification only needs hours-old data, so the floor can't change the
-    # verdict; if the newest data is older than 35 days the probe finds nothing
-    # and the verdict falls through to "no_heart_rate_data" (still "down").
+    # verdict; if the newest data is older than the floor the probe finds
+    # nothing and the verdict falls through to "no_heart_rate_data" (still
+    # "down").
     user_id = None
     latest_per_type = {}
     try:
@@ -256,7 +267,7 @@ def status():
         row = fetch_one(
             "SELECT user_id::text AS user_id, time AS latest "
             "FROM heart_rate_sample "
-            "WHERE time > now() - interval '35 days' "
+            f"WHERE time > now() - interval '{PROBE_FLOOR_DAYS} days' "
             "ORDER BY time DESC LIMIT 1"
         )
         ms = int((time.time() - t0) * 1000)
@@ -286,7 +297,7 @@ def status():
                               ("totalCaloriesBurned", "total_calories_burned")):
             row = fetch_one(
                 f"SELECT max(start_at) AS latest FROM {table} "
-                f"WHERE user_id = %s AND start_at > now() - interval '35 days'",
+                f"WHERE user_id = %s AND start_at > now() - interval '{PROBE_FLOOR_DAYS} days'",
                 (user_id,),
             )
             if row and row["latest"]:
@@ -410,13 +421,13 @@ def _insert_samples(conn, schema, user_id, method, items):
             # every chunk, and decompressing candidate batches for DML blows
             # timescaledb.max_tuples_decompressed_per_dml_transaction (100k)
             # on heart_rate_sample (1.4M compressed rows) — the whole /sync
-            # 500s and the client's Changes token stops advancing. The ±7d
-            # margin still clears stale rows of a record whose window shifted.
+            # 500s and the client's Changes token stops advancing. The
+            # SAMPLES_DELETE_MARGIN padding still clears stale rows of a
+            # record whose window shifted.
             bound_sql, params = "", [source_ids, str(user_id)]
             if t_min is not None:
-                margin = datetime.timedelta(days=7)
                 bound_sql = " AND time >= %s AND time <= %s"
-                params += [t_min - margin, t_max + margin]
+                params += [t_min - SAMPLES_DELETE_MARGIN, t_max + SAMPLES_DELETE_MARGIN]
             cur.execute(
                 f"DELETE FROM {table} WHERE source_id = ANY(%s::uuid[]) AND user_id = %s"
                 f"{bound_sql} RETURNING source_id",
