@@ -27,7 +27,7 @@ so every consumer has to decide how to treat adjacent rows.
 | Surface | What it answers | Night grouping | Duration | Bedtime / Wake |
 |---|---|---|---|---|
 | **MCP `get_sleep_sessions` / `get_daily_summary`** (hcgateway-mcp) | "show me the raw nights, I'll reason" (LLM agent) | **none** — raw rows by start date | per-session | per-session |
-| **`sleep_rolling_stats`** matview → Grafana Bedtime/Wake/Midpoint/Duration + `get_sleep_trend` | "nightly trend over time" | `sleep_day` = JST **18:00 cutoff on cluster start** (→ wake-day) | **day-sum of ALL sessions** (naps included) | from the **longest cluster** (≤60 min merged) of that sleep_day |
+| **`sleep_rolling_stats`** matview → Grafana Bedtime/Wake/Midpoint/Duration + `get_sleep_trend` | "nightly trend over time" | `sleep_day` = JST **18:00 cutoff on cluster start** (→ wake-day) | **day-sum of ALL sessions** (naps included) | from the **longest cluster** (≤120 min merged) of that sleep_day, with `main_share` saying how representative it is |
 | **`sleep_hypnogram`** view → Grafana Sleep Stages | "hypnogram of one night" | `night_date` = **same 18:00 cutoff on cluster start** as the matview (→ wake-day, one shared label) | n/a | n/a |
 
 Three deliberate choices behind this:
@@ -47,22 +47,41 @@ Three deliberate choices behind this:
    *time* needs a single representative, so bedtime/wake must pick one. Picking the
    longest single session breaks on fragmented nights (`00:30`+`02:30` → shows
    `02:30`); picking earliest-start/latest-end breaks on naps (`wake` grabs the
-   morning nap's end). Only the **longest ≤60-min cluster's** start/end is robust to
-   both — so timing uses clustering even though duration does not.
+   morning nap's end). Only the **longest ≤120-min cluster's** start/end is robust to
+   both — so timing uses clustering even though duration does not. On ~10% of days
+   *no* cluster dominates and no rule can pick a meaningful one; `main_share`
+   reports that rather than hiding it (see "Representativeness" below).
 
 ### Worked example (illustrative — split night + morning nap)
 
-Raw rows: ① `00:30–02:00`, ② `02:30–07:30` (30 min after ①), ③ `09:00–10:30` (90 min after ②).
+Raw rows: ① `00:30–02:00`, ② `02:30–07:30` (30 min after ①), ③ `10:00–11:30` (2.5 h after ②).
 
 | | result |
 |---|---|
 | MCP `get_sleep_sessions` | 3 raw rows ①②③ (no merge) |
 | matview `duration` | **8.0 h** = ①+②+③ summed (nap included) |
-| matview `bedtime` / `wake` | **00:30 / 07:30** — longest cluster is ①②; ③ doesn't affect timing |
+| matview `bedtime` / `wake` | **00:30 / 07:30** — longest cluster is ①②; ③ is >120 min later so it doesn't affect timing |
+| matview `main_share` | ~0.8 — ①② hold most of the day's sleep, so the pair above does describe a night |
 | Sleep Stages `night_date` | ①②③ → the night's wake-day (18:00 cutoff = the matview's sleep_day) |
 
 Note `duration` (8.0 h, incl. nap) intentionally exceeds the `bedtime→wake` span
 (7.0 h): duration = total sleep that day, bedtime/wake = the main night's edges.
+
+### Representativeness (`main_share`)
+
+`main_share` = the chosen cluster's actual sleep ÷ the sleep_day's total actual
+sleep. 1.0 = one consolidated block (553 of 881 days); below ~0.65 the day was
+split into comparable pieces and bedtime/wake describe one of them, not a night.
+
+This is not a defect to be tuned away. The clinical mid-sleep point is defined on
+a *main sleep period*, and on 88 days (10%) this data has no such thing — the
+inter-cluster gap distribution has no valley to split "fragmented night" from
+"separate sleep" (1-2h: 92, 2-3h: 84, 3-4h: 78, 4-5h: 55 …), so every merge rule
+is a judgement call. Grafana therefore plots those days as **red points** on
+Bedtime/Wake/Midpoint (`CASE WHEN main_share < 0.65 THEN <metric> END AS
+"Fragmented"`, override colour `dark-red`, `lineWidth 0`, `pointSize 9`) instead
+of implying a single night happened, and `sleep_regularity` (below) carries the
+regularity signal for those days because it needs no main sleep period at all.
 
 ### 0:00-crossing nights
 
@@ -116,6 +135,36 @@ the trend and the hypnogram.
   use sample SD (n−1) while the circular SD is population-style (no standard
   small-sample correction exists); the centered window means the newest 3 days'
   MA revises as data lands.
+- **Sleep-period threshold (0019, all three surfaces):** the wake bout that ends a
+  sleep period moved 60 → 120 min, and now lives in one place —
+  `sleep_gap_threshold()`, an IMMUTABLE SQL function the two matviews and the
+  hypnogram all call, so the shared night definition cannot drift between them.
+  This is a parameter *of* the clinical definition (mid-sleep keeps WASO inside
+  the period), not a departure from it. Chosen on a measured trade-off, since the
+  gap distribution offers no natural cut: leave-one-out midpoint deviation
+  against the ±3-day circular neighbourhood improves 2.002 → 1.967 (p90 4.90 →
+  4.68), days with no dominant cluster drop 126 → 88, at the price of over-long
+  spans (>14 h) rising 10 → 19. 150 min+ degrades fast (39 then 56 such days;
+  180 min produces a 32.8 h "night"). Net effect vs 0018: midpoint moves on 95
+  days (54 closer to their neighbourhood, 41 further), bedtime 35, wake 79,
+  duration 13 (sleep_day relabels, 883 → 881 days).
+- **Rejected in 0019 — ranking clusters by actual sleep instead of span.** It
+  measures worse (deviation 2.002 → 2.025 at 60 min, 1.967 → 2.000 at 120 min):
+  actual-sleep differences between blocks are small and noisy, so the pick flips
+  on low-efficiency nights (2025-09-29's 03:09-13:02 block, 8.78 h in bed but
+  3.57 h asleep, loses to a short evening block → midpoint 06:55 → 19:59). Span
+  differences are larger and more stable. Ranking stays on span.
+- **`sleep_regularity` (0019):** Sleep Regularity Index, `−100 + 200/(M·(N−1)) ·
+  Σ δ(s(i,j), s(i+1,j))` — the chance the sleep/wake state at a clock minute
+  repeats 24 h later. 1-min epochs, **JST calendar days** (not `sleep_day`: SRI is
+  a 24 h-cycle measure and the standard boundary is midnight), asleep = stages
+  4/5/6, trailing 7-day window (6 adjacent pairs), emitted only at ≥4 pairs so a
+  tracking gap cannot fake regularity. It needs no main sleep period, which is
+  exactly why it covers the days `main_share` flags. Grafana panel 59 "Sleep
+  Regularity (SRI)" at the bottom of the Sleep row. Full recompute is ~8.5 s on
+  the RPi4 — too slow for 0016's 5-min job, so it has its own **hourly**
+  `sleep_regularity_refresh_if_dirty`, driven off the same dirty counter with its
+  own `sri_refreshed_changes` watermark.
 - **Stage panels:** `sleep_stage_daily` **matview** (`0008` view + `0009` ±stddev bands,
   materialized in `0010_sleep_stage_daily_matview.sql` — the cluster + jsonb explosion
   was ~1.2 s/query × 5 panels; matview makes reads ~2 ms, refreshed by the
