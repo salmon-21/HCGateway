@@ -106,6 +106,16 @@ the trend and the hypnogram.
   but 14% of nights had a pre-midnight midpoint and windows straddling the wrap
   averaged to impossible daytime values (32% of nights). Duration/actual stats stay
   linear (not clock-of-day quantities).
+- **MA/band window (0018, both matviews):** `RANGE BETWEEN INTERVAL '3 days'
+  PRECEDING AND INTERVAL '3 days' FOLLOWING` — a true calendar ±3-day window. The
+  old ROWS frame counted observations, so the "7-day MA" bridged tracking gaps
+  (up to 150 days) as if contiguous. Bands (upper/lower, linear and circular) are
+  NULL when the frame has <3 points — STDDEV of 1 point is NULL and the old
+  `COALESCE(…, 0)` rendered it as a zero-width band (false certainty); Grafana
+  skips NULLs. The MA itself is kept at any n. Accepted asymmetries: linear bands
+  use sample SD (n−1) while the circular SD is population-style (no standard
+  small-sample correction exists); the centered window means the newest 3 days'
+  MA revises as data lands.
 - **Stage panels:** `sleep_stage_daily` **matview** (`0008` view + `0009` ±stddev bands,
   materialized in `0010_sleep_stage_daily_matview.sql` — the cluster + jsonb explosion
   was ~1.2 s/query × 5 panels; matview makes reads ~2 ms, refreshed by the
