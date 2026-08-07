@@ -171,16 +171,43 @@ the trend and the hypnogram.
   4/5/6, trailing 7-day window (6 adjacent pairs), emitted only at ≥4 pairs so a
   tracking gap cannot fake regularity. It needs no main sleep period, which is
   exactly why it covers the days `main_share` flags. Grafana panel 59 "Sleep
-  Regularity (SRI)" at the bottom of the Sleep row, with the dashed reference
+  Regularity (SRI / IS)" at the bottom of the Sleep row, with the dashed reference
   line at **40 = this user's all-time median** (365 d: 34.7, 90 d: 57.0), the
   same faint `rgba(255,255,255,0.3)` convention as Midpoint's 2.75 and Wake's 7.
   It is a *personal baseline, not a clinical cutoff* — SRI has no established
   threshold (the literature analyses it by within-sample percentiles), so
   coloured good/bad zones would invent precision that does not exist.
-  Full recompute is ~8.5 s on
+  Full recompute is ~10 s on
   the RPi4 — too slow for 0016's 5-min job, so it has its own **hourly**
   `sleep_regularity_refresh_if_dirty`, driven off the same dirty counter with its
   own `sri_refreshed_changes` watermark.
+- **`is_28d` — Interdaily Stability (0020), in the same matview and panel.** SRI
+  compares each minute to the same minute 24 h later, so it is blind *by
+  construction* to a schedule that drifts steadily: shift 20 min later every day
+  and each day still resembles the next. IS (Witting et al. 1990) compares
+  against the window's **average 24 h profile** instead, so drift destroys it.
+  Over a common 28-day window (n=844) the two correlate 0.88 with each other but
+  −0.41 (SRI) vs −0.68 (IS) with measured phase drift — IS is ~1.7× more
+  drift-sensitive, as the definitions predict. It is not theoretical: 2025-12-18
+  scored SRI 46 / **IS 0.073** while the phase rotated ~8 h per 28 days, and
+  2025-11 → 2026-03 sat at IS 0.05–0.12 throughout — four months with essentially
+  no 24 h rhythm, which the SRI-only panel showed as unremarkable 15–50 noise.
+  24 hourly bins (Witting's grain; the SRI half keeps 1-min epochs), trailing 28
+  days, gated at ≥14 days of data. Plotted ×100 to share the 0-100 axis; stored
+  natively 0..1. Computed with RANGE-frame window functions — expanding
+  `Σ_h(x̄_h−x̄)² = (1/D²)Σ_h Sh² − 24x̄²` leaves only rolling sums, so it costs
+  ~2 s instead of a per-day rescan.
+  **Caveats:** IS is the *slow* companion (28 d vs SRI's 7 d), so the vertical gap
+  between the two series mixes timescale with drift — a `sri_28d` column would
+  make it clean and is deliberately not added until wanted. IS has no clinical
+  cutoff either, and the dashed 40 line belongs to SRI only. IS says drift
+  happened, not how fast or which way; for that, regress midpoint on time.
+- **Rejected in 0020:** *IV* (Intradaily Variability, the fragmentation member of
+  the same family) correlates −0.91 with mean `main_share` and +0.79 with the
+  fragmented-day count over the same window — good independent corroboration of
+  `main_share`, redundant as a panel. A *28-day SRI* correlates 0.70 with the
+  7-day one (SD 17.2 → 12.1): same signal, slower clock. *IS/IV/RA on `steps`*
+  (the classical activity-based form) is plausible but a separate project.
 - **Stage panels:** `sleep_stage_daily` **matview** (`0008` view + `0009` ±stddev bands,
   materialized in `0010_sleep_stage_daily_matview.sql` — the cluster + jsonb explosion
   was ~1.2 s/query × 5 panels; matview makes reads ~2 ms, refreshed by the
