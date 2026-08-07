@@ -77,11 +77,21 @@ This is not a defect to be tuned away. The clinical mid-sleep point is defined o
 a *main sleep period*, and on 88 days (10%) this data has no such thing — the
 inter-cluster gap distribution has no valley to split "fragmented night" from
 "separate sleep" (1-2h: 92, 2-3h: 84, 3-4h: 78, 4-5h: 55 …), so every merge rule
-is a judgement call. Grafana therefore plots those days as **red points** on
-Bedtime/Wake/Midpoint (`CASE WHEN main_share < 0.65 THEN <metric> END AS
-"Fragmented"`, override colour `dark-red`, `lineWidth 0`, `pointSize 9`) instead
-of implying a single night happened, and `sleep_regularity` (below) carries the
-regularity signal for those days because it needs no main sleep period at all.
+is a judgement call. Grafana therefore marks those days with a **full-height red
+line** on Bedtime/Wake/Midpoint instead of implying a single night happened, and
+`sleep_regularity` (below) carries the regularity signal for those days because
+it needs no main sleep period at all.
+
+The line is a `Fragmented` series, not an annotation: `CASE WHEN main_share <
+0.65 THEN 24 END` (24 = the panels' axis max, so it spans the full height),
+rendered as a thin `bars` series — `dark-red`, `barWidthFactor 0.08`,
+`fillOpacity 80`, `lineWidth 0`, hidden from the tooltip (a "Fragmented: 24 h"
+row would be nonsense), and ordered **first** in `indexByName` so it draws behind
+the data rather than over it. Annotations were the obvious alternative and are
+wrong here: the dashboard already spends its vertical-line channel on the
+user-authored `Life` (cyan) and `Med` (orange) annotation queries, which render
+on every panel. Solid red vs. those dashed lines is what keeps the three
+readable — keep it solid if you restyle.
 
 ### 0:00-crossing nights
 
@@ -161,7 +171,13 @@ the trend and the hypnogram.
   4/5/6, trailing 7-day window (6 adjacent pairs), emitted only at ≥4 pairs so a
   tracking gap cannot fake regularity. It needs no main sleep period, which is
   exactly why it covers the days `main_share` flags. Grafana panel 59 "Sleep
-  Regularity (SRI)" at the bottom of the Sleep row. Full recompute is ~8.5 s on
+  Regularity (SRI)" at the bottom of the Sleep row, with the dashed reference
+  line at **40 = this user's all-time median** (365 d: 34.7, 90 d: 57.0), the
+  same faint `rgba(255,255,255,0.3)` convention as Midpoint's 2.75 and Wake's 7.
+  It is a *personal baseline, not a clinical cutoff* — SRI has no established
+  threshold (the literature analyses it by within-sample percentiles), so
+  coloured good/bad zones would invent precision that does not exist.
+  Full recompute is ~8.5 s on
   the RPi4 — too slow for 0016's 5-min job, so it has its own **hourly**
   `sleep_regularity_refresh_if_dirty`, driven off the same dirty counter with its
   own `sri_refreshed_changes` watermark.
