@@ -213,9 +213,27 @@ the trend and the hypnogram.
   the schedule is moving or how fast, and IS only responds when something is
   already wrong. `|drift|` correlates −0.50 with IS and just −0.22 with SRI, so
   it is largely its own signal — and the only one of the three carrying a sign.
-  14-day trailing **mean** of `mod(Δmidpoint + 36, 24) − 12` in min/day,
-  consecutive days only, gated at ≥8 deltas; positive = moving later. Plotted
-  zero-centred, orange above / blue below, so the sign reads at a glance.
+  14-day trailing **mean** of `mod(Δmidpoint + 36, 24) − 12` in min/day, gated at
+  ≥8 deltas; positive = moving later. Plotted zero-centred, orange above / blue
+  below, so the sign reads at a glance.
+  A step may span **1 or 2 sleep_days**, divided by the gap to stay a per-day
+  rate (**0022**). 0021 required strictly consecutive days and left 42 of 856
+  rows (4.9%) NULL, arriving in *pairs* — 2025-09-21/22, 10-09/10, 10-25/26 …
+  One mechanism produced all of them: sleep starting ≥18:00 JST is labelled the
+  next day, so if that is calendar day D's only sleep, no cluster is ever
+  labelled `sleep_day = D`. Day D then has an SRI/IS row but no midpoint to
+  difference, and day D+1's predecessor is D−1, so the gap is 2 and 0021 emitted
+  nothing. Spanning two days recovers the second half of every pair: 842 → 867
+  deltas, NULLs 42 → 25, and the value distribution barely moves (mean |value|
+  155.1 → 153.0). The 25 that remain are correct — 17 are calendar days with no
+  `sleep_day` at all (no midpoint exists to difference; filling them would be
+  invention), 7 are the intended <8-deltas gate, 1 is a hole wider than 2 days.
+  This mattered because the NULLs were not evenly spread: all 25 in the last year
+  fall in 2025-08 → 2026-02 and none after 2026-02-19, since skipping a sleep_day
+  needs an evening onset — which is what a rotating schedule does. The metric was
+  thinnest over exactly the stretch it exists to describe. **Stop at 2:** the span
+  assumes drift is linear across the hole (free for one day, an assumption for
+  two) and the ±12 h wrap ambiguity grows with step length.
   The **mean, not the median** — the median looks like the robust choice and
   measures worse (day-to-day jitter 30.2 vs 23.9 min, peak |value| 379 vs 271,
   and implausible levels like 2025-09 = +107 min/day). The daily deltas are
