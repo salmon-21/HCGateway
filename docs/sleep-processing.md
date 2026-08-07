@@ -208,6 +208,29 @@ the trend and the hypnogram.
   and rejected: their empirical ranges nearly coincide (SRI 4.2–85.6, IS×100
   5.4–83.8) so the shared 0-100 axis distorts neither, and the *divergence* is
   the whole reason IS exists — two panels would hide it.
+- **`drift_min_per_day` — signed phase drift (0021), Grafana panel 61 "Phase
+  Drift".** SRI and IS both say *that* regularity broke; neither says which way
+  the schedule is moving or how fast, and IS only responds when something is
+  already wrong. `|drift|` correlates −0.50 with IS and just −0.22 with SRI, so
+  it is largely its own signal — and the only one of the three carrying a sign.
+  14-day trailing **mean** of `mod(Δmidpoint + 36, 24) − 12` in min/day,
+  consecutive days only, gated at ≥8 deltas; positive = moving later. Plotted
+  zero-centred, orange above / blue below, so the sign reads at a glance.
+  The **mean, not the median** — the median looks like the robust choice and
+  measures worse (day-to-day jitter 30.2 vs 23.9 min, peak |value| 379 vs 271,
+  and implausible levels like 2025-09 = +107 min/day). The daily deltas are
+  asymmetric so the median lands on one lobe, while the mean is what a drift
+  *rate* means: the sum telescopes, so mean = net displacement ÷ days.
+  **Limit:** a real change beyond ±12 h wraps to the wrong sign and the mean
+  carries it. 29 of 842 deltas (3.4%) exceed 9 h, so trust it on entrained or
+  slowly drifting stretches and read it loosely on the wildest ones — where IS
+  is already near zero and saying so more honestly. Read the two together.
+  **Dependency:** this is the first thing in `sleep_regularity` not derived
+  straight from `sleep_session` — midpoint comes from `sleep_rolling_stats`, so
+  the clustering, 18:00 cutoff and circular midpoint are inherited rather than
+  reimplemented. That means it depends on a matview refreshed by a *different*
+  job (0016's 5-min one vs its own hourly one), so drift can lag by up to an
+  hour. Fine for a 14-day rate; don't duplicate the clustering to avoid it.
 - **Rejected in 0020:** *IV* (Intradaily Variability, the fragmentation member of
   the same family) correlates −0.91 with mean `main_share` and +0.79 with the
   fragmented-day count over the same window — good independent corroboration of
