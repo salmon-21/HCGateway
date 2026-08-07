@@ -171,12 +171,15 @@ the trend and the hypnogram.
   4/5/6, trailing 7-day window (6 adjacent pairs), emitted only at ≥4 pairs so a
   tracking gap cannot fake regularity. It needs no main sleep period, which is
   exactly why it covers the days `main_share` flags. Grafana panel 59 "Sleep
-  Regularity (SRI / IS)" at the bottom of the Sleep row, with the dashed reference
-  line at **40 = this user's all-time median** (365 d: 34.7, 90 d: 57.0), the
-  same faint `rgba(255,255,255,0.3)` convention as Midpoint's 2.75 and Wake's 7.
-  It is a *personal baseline, not a clinical cutoff* — SRI has no established
-  threshold (the literature analyses it by within-sample percentiles), so
-  coloured good/bad zones would invent precision that does not exist.
+  Regularity (SRI / IS)" at the bottom of the Sleep row — **plain lines, no fill
+  and no reference line**. A faint dashed personal baseline at 40 (this user's
+  all-time median; 365 d: 34.7, 90 d: 57.0) was tried, in the same style as
+  Midpoint's 2.75 and Wake's 7, and removed once `is_28d` joined the panel: one
+  horizontal line that applies to only one of two series reads as a shared
+  threshold. Don't re-add it without also solving that. What stays true is the
+  reason it could never be a *clinical* line — SRI has no established cutoff (the
+  literature analyses it by within-sample percentiles), so coloured good/bad zones
+  would invent precision that does not exist.
   Full recompute is ~10 s on
   the RPi4 — too slow for 0016's 5-min job, so it has its own **hourly**
   `sleep_regularity_refresh_if_dirty`, driven off the same dirty counter with its
@@ -200,8 +203,11 @@ the trend and the hypnogram.
   **Caveats:** IS is the *slow* companion (28 d vs SRI's 7 d), so the vertical gap
   between the two series mixes timescale with drift — a `sri_28d` column would
   make it clean and is deliberately not added until wanted. IS has no clinical
-  cutoff either, and the dashed 40 line belongs to SRI only. IS says drift
-  happened, not how fast or which way; for that, regress midpoint on time.
+  cutoff either. IS says drift happened, not how fast or which way; for that,
+  regress midpoint on time. Splitting the two into separate panels was considered
+  and rejected: their empirical ranges nearly coincide (SRI 4.2–85.6, IS×100
+  5.4–83.8) so the shared 0-100 axis distorts neither, and the *divergence* is
+  the whole reason IS exists — two panels would hide it.
 - **Rejected in 0020:** *IV* (Intradaily Variability, the fragmentation member of
   the same family) correlates −0.91 with mean `main_share` and +0.79 with the
   fragmented-day count over the same window — good independent corroboration of
