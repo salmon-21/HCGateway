@@ -97,11 +97,15 @@ the trend and the hypnogram.
   computed on the **cluster** start so a night that resumes after a brief wake stays
   one lane. Evolved `0005_hypnogram_cluster_night.sql` (cluster anchor) →
   `0006_hypnogram_wakeday_night.sql` (18:00 cutoff, replacing the earlier −6h label).
-- **Bedtime/wake bands:** `circular_stats()` (from `0003`) gives the circular mean
-  (atan2 over hour-of-day). `0007_circular_sd.sql` switched the band from an
+- **Bedtime/wake/midpoint bands:** `circular_stats()` (from `0003`) gives the circular
+  mean (atan2 over hour-of-day). `0007_circular_sd.sql` switched the band from an
   unwrap-then-linear-stddev approximation to the true circular SD
   `sqrt(-2·ln R)·12/π` (R = mean resultant length; capped at 12 h). Tight band when
-  bedtimes cluster, wide when dispersed. Mean and the linear stats are unchanged.
+  bedtimes cluster, wide when dispersed. `0017_midpoint_circular.sql` extended this to
+  the midpoint MA/bands — 0007 left midpoint linear on the assumption it stays ~2-3 AM,
+  but 14% of nights had a pre-midnight midpoint and windows straddling the wrap
+  averaged to impossible daytime values (32% of nights). Duration/actual stats stay
+  linear (not clock-of-day quantities).
 - **Stage panels:** `sleep_stage_daily` **matview** (`0008` view + `0009` ±stddev bands,
   materialized in `0010_sleep_stage_daily_matview.sql` — the cluster + jsonb explosion
   was ~1.2 s/query × 5 panels; matview makes reads ~2 ms, refreshed by the
