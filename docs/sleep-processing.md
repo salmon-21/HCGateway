@@ -107,7 +107,7 @@ the trend and the hypnogram.
   (clusters via gaps-and-islands with running-max-end; supersedes the
   `sleep_rolling_stats` definition from `0003_bedtime_wake_bands.sql`; reuses
   `circular_stats()` from 0003). Apply with `scripts/apply-pg-migrations.sh`.
-- **Write path:** the `sleep_session` AFTER-STATEMENT trigger refreshes *both* `sleep_rolling_stats` and `sleep_stage_daily` per statement, so writes must be single-statement — a per-row `executemany` (API `_insert_records`) fires 2 concurrent refreshes per row and is catastrophic (~98 s for 42 rows before this was fixed).
+- **Write path:** the `sleep_session` AFTER-STATEMENT trigger only bumps a dirty counter (<1 ms); background jobs do the refreshing (0016 for `sleep_rolling_stats` + `sleep_stage_daily`, 0019/0023 for `sleep_regularity`). *Before* 0016 the trigger ran both `REFRESH … CONCURRENTLY` inline, so a per-row `executemany` (API `_insert_records`) fired 2 refreshes per row — ~98 s for 42 rows. Writes should still be single-statement, but for the usual bulk-insert reasons now, not to avoid that cliff.
 - **MCP:** `~/Dev/hcgateway-mcp/server.py` (`_raw_sleep_sessions`; no
   `_classify_episode` anymore). Rebuild: `docker compose up -d --build hcgateway-mcp`.
 - **Grafana** "Health Connect" dashboard (Grafana Cloud):
@@ -181,9 +181,35 @@ the trend and the hypnogram.
   literature analyses it by within-sample percentiles), so coloured good/bad zones
   would invent precision that does not exist.
   Full recompute is ~10 s on
-  the RPi4 — too slow for 0016's 5-min job, so it has its own **hourly**
-  `sleep_regularity_refresh_if_dirty`, driven off the same dirty counter with its
-  own `sri_refreshed_changes` watermark.
+  the RPi4, so it gets its own `sleep_regularity_refresh_if_dirty` job rather
+  than riding 0016's, with its own `sri_refreshed_changes` watermark. **0019 ran
+  it hourly; 0023 moved it to 5 min** — see below.
+- **Refresh cadence (0023).** 0019's hourly interval assumed ~10 s per run was
+  too heavy for a 5-minute tick, which confused cost per *run* with cost per
+  *day*: the procedure refreshes only when the dirty counter moved, so the run
+  count is set by how often sleep data arrives, not by how often the job ticks.
+  Measured: 5 `sleepSession` syncs in 7 days (~24 h apart), ~3.2 counter bumps a
+  day, 1 actual SRI refresh in 24 h. An hourly window coalesces almost nothing,
+  so ticking every 5 min runs the same handful of refreshes *earlier* — bounded
+  by ~20 s of extra CPU a day, with non-dirty ticks still costing 0.03 s.
+  **The gate had to change with it.** `drift_min_per_day` reads
+  `sleep_rolling_stats`, both jobs watch the same counter, and
+  `REFRESH … CONCURRENTLY` keeps the pre-refresh snapshot visible until commit —
+  so on a shared 5-minute schedule a simultaneous SRI run would compute drift
+  from the *old* midpoints and sit permanently one sync behind. Gating on
+  `refreshed_changes` (the watermark 0016 stamps *after* its refresh commits)
+  instead of `changes` makes the ordering structural: SRI can only become dirty
+  once the rolling stats are current. Costs one extra tick — worst case 1 h 5 min
+  → **10 min** — and closes a rare pre-existing race (the hourly job fired at
+  :46:55, a 5-min tick at :47:13, so a sync landing just before :46:55 already
+  made SRI read stale midpoints).
+  **Rejected in 0023 — folding SRI into `sleep_stats_refresh_if_dirty`.** One
+  job, sequential by construction, 5-minute worst case. It couples the failures:
+  the watermark is stamped after all refreshes, so an SRI failure would leave
+  `refreshed_changes` unstamped and the 5-min job would redo the ~9 s
+  rolling-stats refresh every tick and fail again — freezing Bedtime/Wake/
+  Duration because the more fragile view broke. 0016 split refreshes out of the
+  write path so one surface's maintenance cannot take another down.
 - **`is_28d` — Interdaily Stability (0020), in the same matview and panel.** SRI
   compares each minute to the same minute 24 h later, so it is blind *by
   construction* to a schedule that drifts steadily: shift 20 min later every day
@@ -247,8 +273,10 @@ the trend and the hypnogram.
   straight from `sleep_session` — midpoint comes from `sleep_rolling_stats`, so
   the clustering, 18:00 cutoff and circular midpoint are inherited rather than
   reimplemented. That means it depends on a matview refreshed by a *different*
-  job (0016's 5-min one vs its own hourly one), so drift can lag by up to an
-  hour. Fine for a 14-day rate; don't duplicate the clustering to avoid it.
+  job, so drift lands one tick behind the rolling stats — ≤10 min since 0023
+  ordered the two watermarks, ≤1 h 5 min before it. Sharing a schedule *without*
+  that ordering would have made drift wrong rather than merely late; see 0023.
+  Fine for a 14-day rate; don't duplicate the clustering to avoid it.
 - **Rejected in 0020:** *IV* (Intradaily Variability, the fragmentation member of
   the same family) correlates −0.91 with mean `main_share` and +0.79 with the
   fragmented-day count over the same window — good independent corroboration of
@@ -257,8 +285,8 @@ the trend and the hypnogram.
   (the classical activity-based form) is plausible but a separate project.
 - **Stage panels:** `sleep_stage_daily` **matview** (`0008` view + `0009` ±stddev bands,
   materialized in `0010_sleep_stage_daily_matview.sql` — the cluster + jsonb explosion
-  was ~1.2 s/query × 5 panels; matview makes reads ~2 ms, refreshed by the
-  sleep_session trigger alongside sleep_rolling_stats) — per sleep_day light/deep/rem/awake
+  was ~1.2 s/query × 5 panels; matview makes reads ~2 ms, refreshed by 0016's
+  5-min job alongside sleep_rolling_stats) — per sleep_day light/deep/rem/awake
   minutes, % (the four sum to 100), 7-day MA, and upper/lower bands, on the same
   cluster sleep_day. Feeds, in the Grafana **Sleep section**: "Sleep Efficiency"
   (actual/duration from the matview, no MA), "Sleep Stages (%)" stacked-area, and the
