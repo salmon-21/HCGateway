@@ -9,6 +9,10 @@ import retrofit2.http.Path
 
 interface ApiService {
 
+    /** Unauthenticated liveness probe — reachability, independent of session state. */
+    @GET("api/v2/health")
+    suspend fun health(): Response<Unit>
+
     @POST("api/v2/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 
