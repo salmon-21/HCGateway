@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.PermissionController
 import androidx.hilt.navigation.compose.hiltViewModel
+import dev.shuchir.hcgateway.domain.model.ServerStatus
 import dev.shuchir.hcgateway.domain.model.SyncState
 import dev.shuchir.hcgateway.ui.components.FilledCard
 import dev.shuchir.hcgateway.ui.components.WarningActionCard
@@ -47,7 +48,7 @@ fun HomeScreen(
     val syncState by viewModel.syncState.collectAsState()
     val hasPermissions by viewModel.hasPermissions.collectAsState()
     val batteryOptimized by viewModel.batteryOptimized.collectAsState()
-    val serverReachable by viewModel.serverReachable.collectAsState()
+    val serverStatus by viewModel.serverStatus.collectAsState()
     val pendingCounts by viewModel.pendingCounts.collectAsState()
     val serverCounts by viewModel.serverCounts.collectAsState()
     var showDatePicker by remember { mutableStateOf(false) }
@@ -118,25 +119,33 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // --- Connection status card ---
-            val statusColor = when (serverReachable) {
-                true -> ExtendedTheme.colors.successContainer
-                false -> MaterialTheme.colorScheme.errorContainer
-                null -> MaterialTheme.colorScheme.surfaceContainerLow
+            val statusColor = when (serverStatus) {
+                ServerStatus.Connected -> ExtendedTheme.colors.successContainer
+                ServerStatus.Unauthenticated -> MaterialTheme.colorScheme.errorContainer
+                ServerStatus.Unreachable -> MaterialTheme.colorScheme.errorContainer
+                ServerStatus.Checking -> MaterialTheme.colorScheme.surfaceContainerLow
             }
-            val statusContentColor = when (serverReachable) {
-                true -> ExtendedTheme.colors.onSuccessContainer
-                false -> MaterialTheme.colorScheme.onErrorContainer
-                null -> MaterialTheme.colorScheme.onSurface
+            val statusContentColor = when (serverStatus) {
+                ServerStatus.Connected -> ExtendedTheme.colors.onSuccessContainer
+                ServerStatus.Unauthenticated -> MaterialTheme.colorScheme.onErrorContainer
+                ServerStatus.Unreachable -> MaterialTheme.colorScheme.onErrorContainer
+                ServerStatus.Checking -> MaterialTheme.colorScheme.onSurface
             }
-            val statusLabel = when (serverReachable) {
-                true -> "Connected to ${settings.apiBase}"
-                false -> "Cannot reach ${settings.apiBase}"
-                null -> "Connecting to ${settings.apiBase}..."
+            val statusLabel = when (serverStatus) {
+                ServerStatus.Connected -> "Connected to ${settings.apiBase}"
+                ServerStatus.Unauthenticated -> "Session expired"
+                ServerStatus.Unreachable -> "Cannot reach ${settings.apiBase}"
+                ServerStatus.Checking -> "Connecting to ${settings.apiBase}..."
+            }
+            val statusHint = when (serverStatus) {
+                ServerStatus.Unauthenticated -> "Tap to retry, or sign in again from Settings"
+                ServerStatus.Unreachable -> "Tap to retry"
+                else -> null
             }
 
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth().then(
-                    if (serverReachable == false) Modifier.clickable { viewModel.checkServerConnection() }
+                    if (statusHint != null) Modifier.clickable { viewModel.checkServerConnection() }
                     else Modifier
                 ),
                 colors = CardDefaults.elevatedCardColors(containerColor = statusColor),
@@ -151,8 +160,8 @@ fun HomeScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(statusLabel, style = MaterialTheme.typography.titleSmall, color = statusContentColor)
                         Text("User: ${settings.username}", style = MaterialTheme.typography.bodySmall, color = statusContentColor.copy(alpha = 0.7f))
-                        if (serverReachable == false) {
-                            Text("Tap to retry", style = MaterialTheme.typography.labelSmall, color = statusContentColor.copy(alpha = 0.5f))
+                        if (statusHint != null) {
+                            Text(statusHint, style = MaterialTheme.typography.labelSmall, color = statusContentColor.copy(alpha = 0.5f))
                         }
                     }
                 }

@@ -15,8 +15,10 @@ import dev.shuchir.hcgateway.data.repository.NetworkMonitor
 import dev.shuchir.hcgateway.data.repository.SyncRepository
 import dev.shuchir.hcgateway.data.repository.SystemSettings
 import dev.shuchir.hcgateway.domain.model.RECORD_TYPES
+import dev.shuchir.hcgateway.domain.model.ServerStatus
 import dev.shuchir.hcgateway.domain.model.SyncState
 import dev.shuchir.hcgateway.domain.model.TypeSyncResult
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -60,9 +62,10 @@ class HomeViewModel @Inject constructor(
         if (px > 0) _tableHeightPx.value = px
     }
 
-    // null = checking, true = reachable, false = unreachable
-    private val _serverReachable = MutableStateFlow<Boolean?>(null)
-    val serverReachable: StateFlow<Boolean?> = _serverReachable.asStateFlow()
+    private var connectionCheck: Job? = null
+
+    private val _serverStatus = MutableStateFlow<ServerStatus>(ServerStatus.Checking)
+    val serverStatus: StateFlow<ServerStatus> = _serverStatus.asStateFlow()
 
     private val _hasPermissions = MutableStateFlow<Boolean?>(null)
     val hasPermissions: StateFlow<Boolean?> = _hasPermissions.asStateFlow()
@@ -76,7 +79,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             syncRepository.syncState.collect { state ->
                 when (state) {
-                    is SyncState.Done -> _serverReachable.value = true
+                    is SyncState.Done -> _serverStatus.value = ServerStatus.Connected
                     is SyncState.Error -> checkServerConnection()
                     else -> {}
                 }
@@ -95,27 +98,47 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             networkMonitor.isConnected.collect { connected ->
                 if (connected) {
+                    // The monitor has already evicted stale pooled sockets, so this
+                    // check runs over fresh connections.
                     checkServerConnection()
                 } else {
-                    _serverReachable.value = false
+                    _serverStatus.value = ServerStatus.Unreachable
                 }
             }
         }
     }
 
     fun checkServerConnection() {
-        viewModelScope.launch {
-            _serverReachable.value = null
+        // Startup, ON_RESUME and a network change all fire this at once; without
+        // this guard each one re-probes /health and /refresh in parallel.
+        if (connectionCheck?.isActive == true) return
+        connectionCheck = viewModelScope.launch {
+            _serverStatus.value = ServerStatus.Checking
             val settings = preferencesRepository.settings.first()
-            if (settings.refreshToken.isBlank()) {
-                _serverReachable.value = false
+
+            // Reachability first, and on its own: /health needs no credentials, so
+            // a failure here is genuinely the network rather than the session.
+            val reachable = try {
+                withTimeout(5000) { apiService.health().isSuccessful }
+            } catch (_: Exception) {
+                false
+            }
+            if (!reachable) {
+                _serverStatus.value = ServerStatus.Unreachable
                 return@launch
             }
-            val reachable = try {
+
+            if (settings.refreshToken.isBlank()) {
+                _serverStatus.value = ServerStatus.Unauthenticated
+                return@launch
+            }
+
+            // The server is up; now find out whether our session still is.
+            val authenticated = try {
                 withTimeout(5000) {
                     val response = apiService.refresh(RefreshRequest(settings.refreshToken))
-                    if (response.isSuccessful && response.body() != null) {
-                        val body = response.body()!!
+                    val body = response.body()
+                    if (response.isSuccessful && body != null) {
                         preferencesRepository.saveTokens(body.token, body.refresh)
                         true
                     } else {
@@ -125,8 +148,10 @@ class HomeViewModel @Inject constructor(
             } catch (_: Exception) {
                 false
             }
-            _serverReachable.value = reachable
-            if (reachable) {
+
+            _serverStatus.value =
+                if (authenticated) ServerStatus.Connected else ServerStatus.Unauthenticated
+            if (authenticated) {
                 loadServerCounts()
                 loadPendingCounts()
             }

@@ -53,6 +53,10 @@ object AppModule {
             level = HttpLoggingInterceptor.Level.BASIC
         })
         .authenticator(authAuthenticator)
+        // A pooled socket whose network went away (Tailscale rebinding, Wi-Fi to
+        // cellular) still looks reusable and fails on first write. NetworkMonitor
+        // evicts the pool on a switch; this retries the request that raced it.
+        .retryOnConnectionFailure(true)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
