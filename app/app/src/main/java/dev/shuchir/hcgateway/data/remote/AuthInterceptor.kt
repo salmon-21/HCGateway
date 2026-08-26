@@ -14,7 +14,12 @@ class AuthInterceptor @Inject constructor(
 ) : Interceptor {
 
     private val refreshLock = Any()
-    @Volatile private var lastRefreshToken: String? = null
+
+    // A refresh token the server has rejected. Retrying it would 403 forever, so
+    // we stop until a new one arrives (i.e. the user logs in again). Tracking the
+    // *last used* token instead would be wrong: /refresh returns the same refresh
+    // token it was given, so a success would permanently block the next refresh.
+    @Volatile private var failedRefreshToken: String? = null
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -46,17 +51,21 @@ class AuthInterceptor @Inject constructor(
                 } else {
                     // We need to refresh
                     val refreshToken = settingsCache.refreshToken
-                    if (refreshToken.isBlank() || refreshToken == lastRefreshToken) null
+                    if (refreshToken.isBlank() || refreshToken == failedRefreshToken) null
                     else {
                         runBlocking {
                             try {
                                 val result = apiServiceProvider.get().refresh(RefreshRequest(refreshToken))
-                                if (result.isSuccessful && result.body() != null) {
-                                    val body = result.body()!!
-                                    lastRefreshToken = refreshToken
+                                val body = result.body()
+                                if (result.isSuccessful && body != null) {
+                                    failedRefreshToken = null
                                     preferencesRepository.saveTokens(body.token, body.refresh)
                                     body.token
-                                } else null
+                                } else {
+                                    // Rejected, not merely unlucky — don't spin on it.
+                                    if (result.code() == 403) failedRefreshToken = refreshToken
+                                    null
+                                }
                             } catch (_: Exception) { null }
                         }
                     }
