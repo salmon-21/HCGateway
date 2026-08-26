@@ -119,17 +119,15 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // --- Connection status card ---
-            val statusColor = when (serverStatus) {
-                ServerStatus.Connected -> ExtendedTheme.colors.successContainer
-                ServerStatus.Unauthenticated -> MaterialTheme.colorScheme.errorContainer
-                ServerStatus.Unreachable -> MaterialTheme.colorScheme.errorContainer
-                ServerStatus.Checking -> MaterialTheme.colorScheme.surfaceContainerLow
-            }
-            val statusContentColor = when (serverStatus) {
-                ServerStatus.Connected -> ExtendedTheme.colors.onSuccessContainer
-                ServerStatus.Unauthenticated -> MaterialTheme.colorScheme.onErrorContainer
-                ServerStatus.Unreachable -> MaterialTheme.colorScheme.onErrorContainer
-                ServerStatus.Checking -> MaterialTheme.colorScheme.onSurface
+            // Paired so a new state can't get a container colour without its
+            // matching content colour.
+            val (statusColor, statusContentColor) = when (serverStatus) {
+                ServerStatus.Connected ->
+                    ExtendedTheme.colors.successContainer to ExtendedTheme.colors.onSuccessContainer
+                ServerStatus.Checking ->
+                    MaterialTheme.colorScheme.surfaceContainerLow to MaterialTheme.colorScheme.onSurface
+                ServerStatus.Unauthenticated, ServerStatus.Unreachable ->
+                    MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
             }
             val statusLabel = when (serverStatus) {
                 ServerStatus.Connected -> "Connected to ${settings.apiBase}"
@@ -137,6 +135,8 @@ fun HomeScreen(
                 ServerStatus.Unreachable -> "Cannot reach ${settings.apiBase}"
                 ServerStatus.Checking -> "Connecting to ${settings.apiBase}..."
             }
+            val canRetry = serverStatus == ServerStatus.Unauthenticated ||
+                serverStatus == ServerStatus.Unreachable
             val statusHint = when (serverStatus) {
                 ServerStatus.Unauthenticated -> "Tap to retry, or sign in again from Settings"
                 ServerStatus.Unreachable -> "Tap to retry"
@@ -145,7 +145,7 @@ fun HomeScreen(
 
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth().then(
-                    if (statusHint != null) Modifier.clickable { viewModel.checkServerConnection() }
+                    if (canRetry) Modifier.clickable { viewModel.checkServerConnection() }
                     else Modifier
                 ),
                 colors = CardDefaults.elevatedCardColors(containerColor = statusColor),

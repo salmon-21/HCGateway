@@ -9,7 +9,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.shuchir.hcgateway.data.local.PreferencesRepository
 import dev.shuchir.hcgateway.data.local.UserSettings
 import dev.shuchir.hcgateway.data.remote.ApiService
-import dev.shuchir.hcgateway.data.remote.RefreshRequest
+import dev.shuchir.hcgateway.data.repository.AuthRepository
 import dev.shuchir.hcgateway.data.repository.HealthConnectRepository
 import dev.shuchir.hcgateway.data.repository.NetworkMonitor
 import dev.shuchir.hcgateway.data.repository.SyncRepository
@@ -37,6 +37,7 @@ class HomeViewModel @Inject constructor(
     private val syncRepository: SyncRepository,
     private val healthConnectRepository: HealthConnectRepository,
     private val apiService: ApiService,
+    private val authRepository: AuthRepository,
     private val networkMonitor: NetworkMonitor,
     private val systemSettings: SystemSettings,
 ) : ViewModel() {
@@ -135,16 +136,7 @@ class HomeViewModel @Inject constructor(
 
             // The server is up; now find out whether our session still is.
             val authenticated = try {
-                withTimeout(5000) {
-                    val response = apiService.refresh(RefreshRequest(settings.refreshToken))
-                    val body = response.body()
-                    if (response.isSuccessful && body != null) {
-                        preferencesRepository.saveTokens(body.token, body.refresh)
-                        true
-                    } else {
-                        false
-                    }
-                }
+                withTimeout(5000) { authRepository.refreshSession(settings.refreshToken) }
             } catch (_: Exception) {
                 false
             }
