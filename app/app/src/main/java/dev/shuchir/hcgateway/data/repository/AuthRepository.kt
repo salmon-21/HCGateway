@@ -3,6 +3,7 @@ package dev.shuchir.hcgateway.data.repository
 import dev.shuchir.hcgateway.data.local.PreferencesRepository
 import dev.shuchir.hcgateway.data.remote.ApiService
 import dev.shuchir.hcgateway.data.remote.LoginRequest
+import dev.shuchir.hcgateway.data.remote.RefreshRequest
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,6 +31,24 @@ class AuthRepository @Inject constructor(
         }
     } catch (e: Exception) {
         Result.failure(e)
+    }
+
+    /**
+     * Trade the stored refresh token for a fresh session, persisting both
+     * tokens. Returns false when the server rejects the token (403) or the
+     * call fails.
+     */
+    suspend fun refreshSession(refreshToken: String): Boolean = try {
+        val response = apiService.refresh(RefreshRequest(refreshToken))
+        val body = response.body()
+        if (response.isSuccessful && body != null) {
+            preferencesRepository.saveTokens(body.token, body.refresh)
+            true
+        } else {
+            false
+        }
+    } catch (e: Exception) {
+        false
     }
 
     suspend fun logout() {

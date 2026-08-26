@@ -19,11 +19,9 @@ class AuthInterceptor @Inject constructor(
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
 
-        // Skip auth for the endpoints the API itself exempts (see before_request
-        // in api/apiVersions/v2/routes.py). /health must stay unauthenticated so
-        // reachability checks don't fail merely because the session expired.
-        val path = request.url.encodedPath
-        if (path.endsWith("/login") || path.endsWith("/refresh") || path.endsWith("/health")) {
+        // /health in particular must stay unauthenticated, so a reachability
+        // check doesn't fail merely because the session expired.
+        if (request.url.encodedPath in UNAUTHENTICATED_PATHS) {
             return chain.proceed(request)
         }
 
