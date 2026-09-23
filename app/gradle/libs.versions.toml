@@ -15,6 +15,7 @@ sentry-plugin = "6.22.0"
 navigation = "2.10.1"
 lifecycle = "2.11.0"
 ksp = "2.3.12"
+aboutlibraries = "15.2.0"
 
 [libraries]
 # Compose
@@ -71,7 +72,7 @@ core-splashscreen = { group = "androidx.core", name = "core-splashscreen", versi
 appcompat = { group = "androidx.appcompat", name = "appcompat", version = "1.8.0" }
 
 # AboutLibraries (core only, UI is custom)
-aboutlibraries-core = { group = "com.mikepenz", name = "aboutlibraries-core", version = "11.6.3" }
+aboutlibraries-core = { group = "com.mikepenz", name = "aboutlibraries-core", version.ref = "aboutlibraries" }
 
 # Material Motion
 material-motion = { group = "io.github.fornewid", name = "material-motion-compose-core", version = "2.0.1" }
@@ -81,5 +82,5 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
-aboutlibraries = { id = "com.mikepenz.aboutlibraries.plugin", version = "11.6.3" }
+aboutlibraries = { id = "com.mikepenz.aboutlibraries.plugin.android", version.ref = "aboutlibraries" }
 sentry = { id = "io.sentry.android.gradle", version.ref = "sentry-plugin" }

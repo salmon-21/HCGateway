@@ -63,9 +63,6 @@ kotlin {
     }
 }
 
-aboutLibraries {
-    registerAndroidTasks = true
-}
 
 
 dependencies {
