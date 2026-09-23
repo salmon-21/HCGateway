@@ -11,7 +11,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.shuchir.hcgateway.data.local.PreferencesRepository
 import dev.shuchir.hcgateway.data.remote.ApiService
-import dev.shuchir.hcgateway.data.remote.AuthAuthenticator
 import dev.shuchir.hcgateway.data.remote.AuthInterceptor
 import dev.shuchir.hcgateway.data.remote.DynamicBaseUrlInterceptor
 import dev.shuchir.hcgateway.data.remote.GzipRequestInterceptor
@@ -44,7 +43,6 @@ object AppModule {
         dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor,
         authInterceptor: AuthInterceptor,
         gzipRequestInterceptor: GzipRequestInterceptor,
-        authAuthenticator: AuthAuthenticator,
     ): OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(dynamicBaseUrlInterceptor)
         .addInterceptor(authInterceptor)
@@ -52,7 +50,6 @@ object AppModule {
         .addInterceptor(HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         })
-        .authenticator(authAuthenticator)
         // StaleConnectionEvictor empties this pool when the network changes; a
         // request that races the eviction is covered by OkHttp's retry, on by
         // default.

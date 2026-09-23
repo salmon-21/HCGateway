@@ -12,6 +12,7 @@ import dev.shuchir.hcgateway.data.remote.ApiService
 import dev.shuchir.hcgateway.data.repository.AuthRepository
 import dev.shuchir.hcgateway.data.repository.HealthConnectRepository
 import dev.shuchir.hcgateway.data.repository.NetworkMonitor
+import dev.shuchir.hcgateway.data.repository.RefreshResult
 import dev.shuchir.hcgateway.data.repository.SyncRepository
 import dev.shuchir.hcgateway.data.repository.SystemSettings
 import dev.shuchir.hcgateway.domain.model.RECORD_TYPES
@@ -136,7 +137,9 @@ class HomeViewModel @Inject constructor(
 
             // The server is up; now find out whether our session still is.
             val authenticated = try {
-                withTimeout(5000) { authRepository.refreshSession(settings.refreshToken) }
+                withTimeout(5000) {
+                    authRepository.refreshSession(settings.refreshToken) is RefreshResult.Refreshed
+                }
             } catch (_: Exception) {
                 false
             }

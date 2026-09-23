@@ -98,6 +98,15 @@ class PreferencesRepository @Inject constructor(
         dataStore.edit { it[UserPreferences.AUTO_SYNC_ENABLED] = enabled }
     }
 
+    /** Drops [refreshToken] only if it's still the stored one — a re-login may have replaced it. */
+    suspend fun discardRefreshToken(refreshToken: String) {
+        dataStore.edit { prefs ->
+            if (prefs[UserPreferences.REFRESH_TOKEN] == refreshToken) {
+                prefs.remove(UserPreferences.REFRESH_TOKEN)
+            }
+        }
+    }
+
     suspend fun clearSession() {
         dataStore.edit { prefs ->
             prefs.remove(UserPreferences.TOKEN)
