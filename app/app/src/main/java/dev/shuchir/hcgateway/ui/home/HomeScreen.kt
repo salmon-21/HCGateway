@@ -27,7 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.PermissionController
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import dev.shuchir.hcgateway.domain.model.ServerStatus
 import dev.shuchir.hcgateway.domain.model.SyncState
 import dev.shuchir.hcgateway.ui.components.FilledCard

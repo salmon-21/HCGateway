@@ -91,7 +91,7 @@ dependencies {
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
-    implementation(libs.hilt.navigation.compose)
+    implementation(libs.hilt.lifecycle.viewmodel.compose)
     implementation(libs.hilt.work)
     ksp(libs.hilt.work.compiler)
 
@@ -121,7 +121,7 @@ dependencies {
     // Core
     implementation(libs.core.ktx)
     implementation(libs.core.splashscreen)
-    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation(libs.appcompat)
 
     // AboutLibraries
     implementation(libs.aboutlibraries.core)
