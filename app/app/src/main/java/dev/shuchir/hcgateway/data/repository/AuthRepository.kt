@@ -34,24 +34,37 @@ class AuthRepository @Inject constructor(
     }
 
     /**
-     * Trade the stored refresh token for a fresh session, persisting both
-     * tokens. Returns false when the server rejects the token (403) or the
-     * call fails.
+     * Trade [refreshToken] for a fresh session, persisting the new tokens. A
+     * token the server rejects (403: unknown to it) is discarded from storage,
+     * so nothing retries it — across process restarts too — until a new login.
      */
-    suspend fun refreshSession(refreshToken: String): Boolean = try {
+    suspend fun refreshSession(refreshToken: String): RefreshResult = try {
         val response = apiService.refresh(RefreshRequest(refreshToken))
         val body = response.body()
-        if (response.isSuccessful && body != null) {
-            preferencesRepository.saveTokens(body.token, body.refresh)
-            true
-        } else {
-            false
+        when {
+            response.isSuccessful && body != null -> {
+                preferencesRepository.saveTokens(body.token, body.refresh)
+                RefreshResult.Refreshed(body.token)
+            }
+            response.code() == 403 -> {
+                preferencesRepository.discardRefreshToken(refreshToken)
+                RefreshResult.Rejected
+            }
+            else -> RefreshResult.Failed
         }
     } catch (e: Exception) {
-        false
+        RefreshResult.Failed
     }
 
     suspend fun logout() {
         preferencesRepository.clearSession()
     }
+}
+
+sealed interface RefreshResult {
+    data class Refreshed(val token: String) : RefreshResult
+    /** The server doesn't know the refresh token; only a new login helps. */
+    data object Rejected : RefreshResult
+    /** Transient (network, 5xx); worth retrying later. */
+    data object Failed : RefreshResult
 }

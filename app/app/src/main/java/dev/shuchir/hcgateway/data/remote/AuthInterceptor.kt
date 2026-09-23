@@ -1,7 +1,8 @@
 package dev.shuchir.hcgateway.data.remote
 
-import dev.shuchir.hcgateway.data.local.PreferencesRepository
 import dev.shuchir.hcgateway.data.local.SettingsCache
+import dev.shuchir.hcgateway.data.repository.AuthRepository
+import dev.shuchir.hcgateway.data.repository.RefreshResult
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -9,17 +10,16 @@ import javax.inject.Inject
 
 class AuthInterceptor @Inject constructor(
     private val settingsCache: SettingsCache,
-    private val preferencesRepository: PreferencesRepository,
-    private val apiServiceProvider: dagger.Lazy<ApiService>,
+    private val authRepositoryProvider: dagger.Lazy<AuthRepository>,
 ) : Interceptor {
 
     private val refreshLock = Any()
 
-    // A refresh token the server has rejected. Retrying it would 403 forever, so
-    // we stop until a new one arrives (i.e. the user logs in again). Tracking the
-    // *last used* token instead would be wrong: /refresh returns the same refresh
-    // token it was given, so a success would permanently block the next refresh.
-    @Volatile private var failedRefreshToken: String? = null
+    // The access token the last refresh replaced, and its replacement (null if the
+    // refresh token was rejected). SettingsCache trails DataStore, so a request
+    // queued behind that refresh may still see the old values; this answers it
+    // without another round trip. Guarded by refreshLock.
+    private var lastRefresh: Pair<String, String?>? = null
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -42,36 +42,7 @@ class AuthInterceptor @Inject constructor(
         if (response.code == 403 && request.header("X-Retry") == null) {
             response.close()
 
-            val newToken = synchronized(refreshLock) {
-                // Check if another thread already refreshed
-                val currentToken = settingsCache.token
-                if (currentToken != token && currentToken.isNotBlank()) {
-                    // Token was already refreshed by another request
-                    currentToken
-                } else {
-                    // We need to refresh
-                    val refreshToken = settingsCache.refreshToken
-                    if (refreshToken.isBlank() || refreshToken == failedRefreshToken) null
-                    else {
-                        runBlocking {
-                            try {
-                                val result = apiServiceProvider.get().refresh(RefreshRequest(refreshToken))
-                                val body = result.body()
-                                if (result.isSuccessful && body != null) {
-                                    failedRefreshToken = null
-                                    preferencesRepository.saveTokens(body.token, body.refresh)
-                                    body.token
-                                } else {
-                                    // Rejected, not merely unlucky — don't spin on it.
-                                    if (result.code() == 403) failedRefreshToken = refreshToken
-                                    null
-                                }
-                            } catch (_: Exception) { null }
-                        }
-                    }
-                }
-            }
-
+            val newToken = synchronized(refreshLock) { refreshLocked(token) }
             if (newToken != null) {
                 val retryRequest = request.newBuilder()
                     .header("Authorization", "Bearer $newToken")
@@ -82,5 +53,22 @@ class AuthInterceptor @Inject constructor(
         }
 
         return response
+    }
+
+    private fun refreshLocked(staleToken: String): String? {
+        lastRefresh?.let { (replaced, replacement) -> if (replaced == staleToken) return replacement }
+
+        // Refreshed elsewhere (e.g. HomeViewModel) since this request went out.
+        settingsCache.token.let { if (it != staleToken && it.isNotBlank()) return it }
+
+        // A rejected refresh token is discarded from storage, so blank covers it.
+        val refreshToken = settingsCache.refreshToken
+        if (refreshToken.isBlank()) return null
+
+        return when (val result = runBlocking { authRepositoryProvider.get().refreshSession(refreshToken) }) {
+            is RefreshResult.Refreshed -> result.token.also { lastRefresh = staleToken to it }
+            RefreshResult.Rejected -> null.also { lastRefresh = staleToken to null }
+            RefreshResult.Failed -> null
+        }
     }
 }
