@@ -110,6 +110,10 @@ private fun AuthenticatedNavGraph() {
         exitTransition = { materialSharedAxisXOut(forward = true, slideDistance = slideDistance) },
         popEnterTransition = { materialSharedAxisXIn(forward = false, slideDistance = slideDistance) },
         popExitTransition = { materialSharedAxisXOut(forward = false, slideDistance = slideDistance) },
+        // Navigation 2.10 defaults these to its own scale-down; keep the back
+        // gesture scrubbing the same shared-axis motion as a tapped back.
+        predictivePopEnterTransition = { materialSharedAxisXIn(forward = false, slideDistance = slideDistance) },
+        predictivePopExitTransition = { materialSharedAxisXOut(forward = false, slideDistance = slideDistance) },
     ) {
         composable("home") {
             HomeScreen(
