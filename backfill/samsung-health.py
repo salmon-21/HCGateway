@@ -27,11 +27,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 from _pg_writer import (
     connect, get_user_id,
     existing_ids, existing_days_jst, is_gap_jst, copy_rows,
+    blob_to_uuid, ms_to_dt, load_app_names,
 )
 
 
 SH_BASE = os.environ.get("SH_BASE", "/tmp/shealth_export")
-JST = timezone(timedelta(hours=9))
 
 
 def _resolve_sh_dir():
@@ -273,7 +273,7 @@ def import_calories():
         total = rest + active
         if total <= 0:
             continue
-        start_dt = datetime.fromtimestamp(int(day_time) / 1000, tz=timezone.utc)
+        start_dt = ms_to_dt(int(day_time))
         if not is_gap_jst(start_dt, have_days):
             continue
         end_dt = start_dt + timedelta(days=1)
@@ -659,20 +659,15 @@ def import_vo2max():
     have = existing_ids(PG, "vo2_max", USER_ID)
     sq = sqlite3.connect(sqlite_path)
     sq.row_factory = sqlite3.Row
+    apps = load_app_names(sq)
     out = []
     for r in sq.execute("SELECT * FROM vo2_max_record_table").fetchall():
-        h = r["uuid"].hex()
-        uid = f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
+        uid = blob_to_uuid(r["uuid"])
         if uid in have or r["vo2_milliliters_per_minute_kilogram"] is None:
             continue
-        start_dt = datetime.fromtimestamp(r["time"] / 1000, tz=timezone.utc)
-        app_row = sq.execute(
-            "SELECT package_name FROM application_info_table WHERE row_id = ?",
-            (r["app_info_id"],),
-        ).fetchone()
-        app = app_row["package_name"] if app_row else "unknown"
-        out.append((uid, USER_ID, start_dt,
-                    float(r["vo2_milliliters_per_minute_kilogram"]), app))
+        out.append((uid, USER_ID, ms_to_dt(r["time"]),
+                    float(r["vo2_milliliters_per_minute_kilogram"]),
+                    apps.get(r["app_info_id"], "unknown")))
     sq.close()
     n = copy_rows(PG, "vo2_max",
                   ["id", "user_id", "start_at", "vo2_max", "app"], out)

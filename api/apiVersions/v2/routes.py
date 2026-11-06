@@ -3,14 +3,16 @@ import os
 import secrets
 import datetime
 import time
-from dotenv import load_dotenv
-load_dotenv()
 from argon2 import PasswordHasher
 from dateutil import parser as dateparser
 from zoneinfo import ZoneInfo
 from psycopg.types.json import Json
 
-from db import pool, fetch_one, fetch_all
+from db import (
+    pool, fetch_one, fetch_all, execute,
+    AUTH_SQL, STATUS_HR_LATEST_SQL, STATUS_ANY_USER_SQL, STATUS_PROBES,
+    STATUS_LATEST_SQL, STREAK_SQL,
+)
 from method_schema import (
     METHOD_SCHEMA, NULLABLE_COLS,
     get_nested, normalize_method, pick_scalar, cast_for_col,
@@ -28,16 +30,14 @@ STATUS_TZ = ZoneInfo(os.environ.get("STATUS_TZ", "UTC"))
 # its own. Normal delta syncs are well under it; only full-sync-scale batches trip.
 SLOW_SYNC_MS = 1000
 
-# 0015 compresses hypertable chunks once fully older than 30 days. Queries and
-# DML that don't need compressed history must say so explicitly, or they walk /
-# decompress every chunk. Both constants track that 30-day policy — change them
-# together with it.
-#   PROBE_FLOOR_DAYS: /status freshness probes; 30 + 5 days of chunk-boundary
-#   slack. An unbounded max(time) costs ~700 ms vs ~50 ms floored.
-#   SAMPLES_DELETE_MARGIN: padding around a samples batch's time range for the
-#   idempotency DELETE, clearing stale rows of a record whose window shifted.
-PROBE_FLOOR_DAYS = 35
+# 0015 compresses hypertable chunks once fully older than 30 days. DML that
+# doesn't need compressed history must say so explicitly, or it walks /
+# decompresses every chunk. Like db.PROBE_FLOOR_DAYS this tracks that 30-day
+# policy — change them together with it. It pads a samples batch's time range
+# for the idempotency DELETE, clearing stale rows of a record whose window shifted.
 SAMPLES_DELETE_MARGIN = datetime.timedelta(days=7)
+
+TOKEN_TTL = datetime.timedelta(hours=12)
 
 v2 = Blueprint('v2', __name__, url_prefix='/api/v2/')
 
@@ -49,11 +49,23 @@ v2 = Blueprint('v2', __name__, url_prefix='/api/v2/')
 def _coerce_time(v):
     """Accept ISO-8601 string or datetime; return aware datetime or None."""
     if isinstance(v, str):
+        # fromisoformat (3.11+ accepts "Z") is ~10x faster than isoparse and
+        # runs once per heart-rate sample; isoparse catches what it rejects.
+        try:
+            return datetime.datetime.fromisoformat(v)
+        except ValueError:
+            pass
         try:
             return dateparser.isoparse(v)
         except Exception:
             return None
     return v
+
+
+def _new_tokens():
+    """Fresh (token, refresh, expiry) for login / refresh."""
+    return (secrets.token_urlsafe(32), secrets.token_urlsafe(32),
+            datetime.datetime.now(datetime.timezone.utc) + TOKEN_TTL)
 
 
 # /status is polled every 5 min by the status Worker; the streak query
@@ -77,11 +89,7 @@ def _heartrate_streak(user_id, tz=STATUS_TZ, max_days=365):
     cutoff = now_local - datetime.timedelta(days=max_days)
 
     try:
-        rows = fetch_all(
-            "SELECT DISTINCT (hour AT TIME ZONE %s)::date AS d "
-            "FROM heart_rate_hourly WHERE user_id = %s AND hour >= %s",
-            (tz.key, str(user_id), cutoff),
-        )
+        rows = fetch_all(STREAK_SQL, (tz.key, str(user_id), cutoff))
         days_with_data = {r["d"] for r in rows}
     except Exception as e:
         print(f"  streak query failed: {e}")
@@ -116,19 +124,14 @@ def before_request():
     except IndexError:
         return jsonify({'error': 'invalid Authorization header'}), 400
 
-    user = fetch_one(
-        "SELECT id, expiry FROM users WHERE token = %s",
-        (token,),
-    )
+    user = fetch_one(AUTH_SQL, (token,))
     if not user:
         return jsonify({'error': 'invalid token'}), 403
 
+    # users.expiry is timestamptz, so psycopg always hands back an aware datetime.
     expiry = user['expiry']
-    if expiry is not None:
-        if expiry.tzinfo is None:
-            expiry = expiry.replace(tzinfo=datetime.timezone.utc)
-        if datetime.datetime.now(datetime.timezone.utc) > expiry:
-            return jsonify({'error': 'token expired. Use /api/v2/login to reauthenticate.'}), 403
+    if expiry is not None and datetime.datetime.now(datetime.timezone.utc) > expiry:
+        return jsonify({'error': 'token expired. Use /api/v2/login to reauthenticate.'}), 403
 
     g.user = user['id']
 
@@ -150,19 +153,13 @@ def login():
         (username,),
     )
 
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
-    expiry = now_utc + datetime.timedelta(hours=12)
-
     if not user:
-        new_token = secrets.token_urlsafe(32)
-        new_refresh = secrets.token_urlsafe(32)
-        with pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO users (username, password, token, refresh, expiry) "
-                    "VALUES (%s, %s, %s, %s, %s)",
-                    (username, ph.hash(password), new_token, new_refresh, expiry),
-                )
+        new_token, new_refresh, expiry = _new_tokens()
+        execute(
+            "INSERT INTO users (username, password, token, refresh, expiry) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            (username, ph.hash(password), new_token, new_refresh, expiry),
+        )
         return jsonify({"token": new_token, "refresh": new_refresh, "expiry": expiry.isoformat()}), 201
 
     try:
@@ -171,23 +168,18 @@ def login():
         return jsonify({'error': 'invalid password'}), 403
 
     existing_expiry = user['expiry']
-    if existing_expiry is not None and existing_expiry.tzinfo is None:
-        existing_expiry = existing_expiry.replace(tzinfo=datetime.timezone.utc)
-    if user['token'] and existing_expiry and now_utc <= existing_expiry:
+    if user['token'] and existing_expiry and datetime.datetime.now(datetime.timezone.utc) <= existing_expiry:
         return jsonify({
             "token": user['token'],
             "refresh": user['refresh'],
             "expiry": existing_expiry.isoformat(),
         }), 201
 
-    new_token = secrets.token_urlsafe(32)
-    new_refresh = secrets.token_urlsafe(32)
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE users SET token = %s, refresh = %s, expiry = %s WHERE id = %s",
-                (new_token, new_refresh, expiry, user['id']),
-            )
+    new_token, new_refresh, expiry = _new_tokens()
+    execute(
+        "UPDATE users SET token = %s, refresh = %s, expiry = %s WHERE id = %s",
+        (new_token, new_refresh, expiry, user['id']),
+    )
     return jsonify({"token": new_token, "refresh": new_refresh, "expiry": expiry.isoformat()}), 201
 
 
@@ -201,35 +193,17 @@ def refresh():
     if not user:
         return jsonify({'error': 'invalid refresh token'}), 403
 
-    new_token = secrets.token_urlsafe(32)
-    expiry = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=12)
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE users SET token = %s, expiry = %s WHERE id = %s",
-                (new_token, expiry, user['id']),
-            )
+    new_token, _, expiry = _new_tokens()
+    execute("UPDATE users SET token = %s, expiry = %s WHERE id = %s",
+            (new_token, expiry, user['id']))
     return jsonify({"token": new_token, "refresh": refresh_tok, "expiry": expiry.isoformat()}), 200
 
 
 @v2.route("/revoke", methods=['DELETE'])
 def revoke():
-    auth = request.headers.get('Authorization', '')
-    try:
-        token = auth.split(' ')[1]
-    except IndexError:
-        return jsonify({'error': 'invalid Authorization header'}), 400
-
-    user = fetch_one("SELECT id FROM users WHERE token = %s", (token,))
-    if not user:
-        return jsonify({'error': 'invalid token'}), 403
-
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE users SET token = NULL, refresh = NULL, expiry = NULL WHERE id = %s",
-                (user['id'],),
-            )
+    # before_request has already validated the bearer token and set g.user.
+    execute("UPDATE users SET token = NULL, refresh = NULL, expiry = NULL WHERE id = %s",
+            (g.user,))
     return jsonify({"success": True}), 200
 
 
@@ -255,6 +229,13 @@ def status():
     handler_t0 = time.monotonic()
     components = {"api": {"status": "ok"}, "db": {}, "dataSync": {}}
 
+    def respond():
+        components["api"]["handlerMs"] = int((time.monotonic() - handler_t0) * 1000)
+        return jsonify({
+            "components": components,
+            "checkedAt": datetime.datetime.now(STATUS_TZ).isoformat(),
+        }), 200
+
     # PROBE_FLOOR_DAYS prunes to the recent (uncompressed) chunks. Freshness
     # classification only needs hours-old data, so the floor can't change the
     # verdict; if the newest data is older than the floor the probe finds
@@ -264,12 +245,7 @@ def status():
     latest_per_type = {}
     try:
         t0 = time.time()
-        row = fetch_one(
-            "SELECT user_id::text AS user_id, time AS latest "
-            "FROM heart_rate_sample "
-            f"WHERE time > now() - interval '{PROBE_FLOOR_DAYS} days' "
-            "ORDER BY time DESC LIMIT 1"
-        )
+        row = fetch_one(STATUS_HR_LATEST_SQL)
         ms = int((time.time() - t0) * 1000)
         components["db"] = {"status": "ok", "responseMs": ms}
         if row and row["latest"]:
@@ -281,25 +257,15 @@ def status():
     if user_id is None:
         # No heart-rate data anywhere — fall back to any user to keep the
         # response shape stable; verdict will be "unknown".
-        fallback = fetch_one("SELECT id::text AS id FROM users ORDER BY id LIMIT 1")
+        fallback = fetch_one(STATUS_ANY_USER_SQL)
         if not fallback:
             components["dataSync"] = {"status": "unknown", "reason": "no_users"}
-            components["api"]["handlerMs"] = int((time.monotonic() - handler_t0) * 1000)
-            return jsonify({
-                "components": components,
-                "checkedAt": datetime.datetime.now(STATUS_TZ).isoformat(),
-            }), 200
+            return respond()
         user_id = fallback["id"]
 
     try:
-        for method, table in (("steps", "steps"),
-                              ("distance", "distance"),
-                              ("totalCaloriesBurned", "total_calories_burned")):
-            row = fetch_one(
-                f"SELECT max(start_at) AS latest FROM {table} "
-                f"WHERE user_id = %s AND start_at > now() - interval '{PROBE_FLOOR_DAYS} days'",
-                (user_id,),
-            )
+        for method, table in STATUS_PROBES:
+            row = fetch_one(STATUS_LATEST_SQL[table], (user_id,))
             if row and row["latest"]:
                 latest_per_type[method] = row["latest"]
 
@@ -323,11 +289,7 @@ def status():
     except Exception:
         components["dataSync"] = {"status": "down", "reason": "query_failed"}
 
-    components["api"]["handlerMs"] = int((time.monotonic() - handler_t0) * 1000)
-    return jsonify({
-        "components": components,
-        "checkedAt": datetime.datetime.now(STATUS_TZ).isoformat(),
-    }), 200
+    return respond()
 
 
 @v2.get("/counts")
@@ -372,15 +334,7 @@ def _insert_samples(conn, schema, user_id, method, items):
     time_field = schema["sample_time_field"]
     val_cols = schema["value_cols"]
 
-    source_ids, rows, skipped = [], [], 0
-    t_min = t_max = None
-
-    def _track(t):
-        nonlocal t_min, t_max
-        if t_min is None or t < t_min:
-            t_min = t
-        if t_max is None or t > t_max:
-            t_max = t
+    source_ids, rows, times, skipped = [], [], [], 0
 
     for item in items:
         meta = item.get("metadata") or {}
@@ -393,13 +347,13 @@ def _insert_samples(conn, schema, user_id, method, items):
         for f in ("startTime", "endTime"):
             tv = _coerce_time(item.get(f))
             if tv is not None:
-                _track(tv)
+                times.append(tv)
         for s in item.get(sample_path) or []:
             t = _coerce_time(s.get(time_field))
             if t is None:
                 skipped += 1
                 continue
-            _track(t)
+            times.append(t)
             values, missing = [], False
             for src, _, sql_type in val_cols:
                 v = cast_for_col(pick_scalar(s.get(src)), sql_type)
@@ -425,15 +379,17 @@ def _insert_samples(conn, schema, user_id, method, items):
             # SAMPLES_DELETE_MARGIN padding still clears stale rows of a
             # record whose window shifted.
             bound_sql, params = "", [source_ids, str(user_id)]
-            if t_min is not None:
+            if times:
                 bound_sql = " AND time >= %s AND time <= %s"
-                params += [t_min - SAMPLES_DELETE_MARGIN, t_max + SAMPLES_DELETE_MARGIN]
+                params += [min(times) - SAMPLES_DELETE_MARGIN, max(times) + SAMPLES_DELETE_MARGIN]
+            # Count distinct ids server-side rather than shipping every deleted
+            # sample row (tens of thousands on a heart-rate re-sync) back here.
             cur.execute(
-                f"DELETE FROM {table} WHERE source_id = ANY(%s::uuid[]) AND user_id = %s"
-                f"{bound_sql} RETURNING source_id",
+                f"WITH d AS (DELETE FROM {table} WHERE source_id = ANY(%s::uuid[]) AND user_id = %s"
+                f"{bound_sql} RETURNING source_id) SELECT count(DISTINCT source_id) FROM d",
                 params,
             )
-            deleted = len({r[0] for r in cur.fetchall()})
+            deleted = cur.fetchone()[0]
         if rows:
             # COPY beats executemany by ~20x for the high-volume sample tables.
             # The preceding DELETE clears conflicts, so no ON CONFLICT is needed.
@@ -527,7 +483,10 @@ def _insert_records(conn, schema, user_id, method, items):
     )
     params = [r[c] for r in rows for c in cols]
     with conn.cursor() as cur:
-        cur.execute(sql, params)
+        # The SQL text varies with batch size, so a server-side prepare would
+        # never be reused — and under prepare_threshold=0 it would push the
+        # primed /status plans (db._PRIMER) out of the connection's LRU cache.
+        cur.execute(sql, params, prepare=False)
         inserted = sum(1 for (is_insert,) in cur.fetchall() if is_insert)
         _bump_count(cur, str(user_id), method, inserted)
     return len(rows), skipped
@@ -587,7 +546,14 @@ def fetch(method):
     body = request.json or {}
     limit = int(body.get("limit", 1000))
 
-    docs = []
+    def doc(r, data):
+        return {
+            "_id": r["id"], "id": r["id"], "app": r["app"],
+            "start": r["start_at"].isoformat() if r["start_at"] else None,
+            "end": r["end_at"].isoformat() if r["end_at"] else None,
+            "data": data,
+        }
+
     if schema["kind"] == "samples":
         time_field = schema["sample_time_field"]
         src_col, dst_col, _ = schema["value_cols"][0]
@@ -601,14 +567,7 @@ def fetch(method):
             f"FROM {table} WHERE user_id = %s "
             f"GROUP BY source_id ORDER BY start_at DESC LIMIT %s"
         )
-        rows = fetch_all(sql, (user_id, limit))
-        for r in rows:
-            docs.append({
-                "_id": r["id"], "id": r["id"], "app": r["app"],
-                "start": r["start_at"].isoformat() if r["start_at"] else None,
-                "end": r["end_at"].isoformat() if r["end_at"] else None,
-                "data": {"samples": r["samples"]},
-            })
+        docs = [doc(r, {"samples": r["samples"]}) for r in fetch_all(sql, (user_id, limit))]
     else:
         val_cols = schema["value_cols"]
         end_col = "end_at" if schema["kind"] != "instant" else "NULL::timestamptz AS end_at"
@@ -617,17 +576,8 @@ def fetch(method):
             f"SELECT {','.join(select_cols)} FROM {table} "
             f"WHERE user_id = %s ORDER BY start_at DESC LIMIT %s"
         )
-        rows = fetch_all(sql, (user_id, limit))
-        for r in rows:
-            rec = {
-                "_id": r["id"], "id": r["id"], "app": r["app"],
-                "start": r["start_at"].isoformat() if r["start_at"] else None,
-                "end": r["end_at"].isoformat() if r["end_at"] else None,
-                "data": {},
-            }
-            for src, dst, _ in val_cols:
-                rec["data"][src] = r[dst]
-            docs.append(rec)
+        docs = [doc(r, {src: r[dst] for src, dst, _ in val_cols})
+                for r in fetch_all(sql, (user_id, limit))]
 
     return jsonify(docs), 200
 
@@ -651,19 +601,17 @@ def del_from_db(method):
     user_id = str(g.user)
     table = schema["table"]
     col = "source_id" if schema["kind"] == "samples" else "id"
+    # For samples, n counts distinct source_ids, not sample rows.
+    tally = "count(DISTINCT source_id)" if schema["kind"] == "samples" else "count(*)"
 
     with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"DELETE FROM {table} WHERE {col} = ANY(%s::uuid[]) AND user_id = %s"
-                f" RETURNING {col}",
+                f"WITH d AS (DELETE FROM {table} WHERE {col} = ANY(%s::uuid[]) AND user_id = %s"
+                f" RETURNING {col}) SELECT {tally} FROM d",
                 (uuids, user_id),
             )
-            if schema["kind"] == "samples":
-                # n counts distinct source_ids, not sample rows.
-                removed = len({r[0] for r in cur.fetchall()})
-            else:
-                removed = cur.rowcount
+            removed = cur.fetchone()[0]
             _bump_count(cur, user_id, norm, -removed)
     return jsonify({'success': True}), 200
 

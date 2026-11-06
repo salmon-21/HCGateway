@@ -10,23 +10,42 @@ POSTGRES_URI = os.environ["POSTGRES_URI"]
 
 from datetime import datetime, timezone
 
+# Hypertable chunks older than 30 days are compressed (0015); the /status
+# freshness probes floor their scan at 30 + 5 days of chunk-boundary slack so
+# they skip that history. An unbounded max(time) costs ~700 ms vs ~50 ms floored.
+PROBE_FLOOR_DAYS = 35
+
+# Queries shared by the routes and _PRIMER below. Plans are cached per exact
+# SQL text, so the primer only helps if it runs these very strings.
+AUTH_SQL = "SELECT id, expiry FROM users WHERE token = %s"
+STATUS_HR_LATEST_SQL = (
+    "SELECT user_id::text AS user_id, time AS latest FROM heart_rate_sample "
+    f"WHERE time > now() - interval '{PROBE_FLOOR_DAYS} days' "
+    "ORDER BY time DESC LIMIT 1"
+)
+STATUS_ANY_USER_SQL = "SELECT id::text AS id FROM users ORDER BY id LIMIT 1"
+STATUS_PROBES = (("steps", "steps"),
+                 ("distance", "distance"),
+                 ("totalCaloriesBurned", "total_calories_burned"))
+STATUS_LATEST_SQL = {
+    table: f"SELECT max(start_at) AS latest FROM {table} "
+           f"WHERE user_id = %s AND start_at > now() - interval '{PROBE_FLOOR_DAYS} days'"
+    for _, table in STATUS_PROBES
+}
+STREAK_SQL = ("SELECT DISTINCT (hour AT TIME ZONE %s)::date AS d "
+              "FROM heart_rate_hourly WHERE user_id = %s AND hour >= %s")
+
 # Each pooled connection caches its own server-side prepared plans, so when
 # /sync bursts grow the pool the status-page /status request can land on a
 # connection that's never planned the SELECTs and pay ~90 ms × 4 hypertables.
 # Prime every new connection up-front with the queries /status and auth use.
 _DUMMY_UUID = "00000000-0000-0000-0000-000000000000"
 _PRIMER = (
-    ("SELECT id, expiry FROM users WHERE token = %s", ("dummy",)),
-    ("SELECT id::text AS id FROM users WHERE username = %s", ("dummy",)),
-    ("SELECT id::text FROM users ORDER BY id LIMIT 1", ()),
-    ("SELECT user_id::text AS user_id, time AS latest FROM heart_rate_sample "
-     "WHERE time = (SELECT max(time) FROM heart_rate_sample) LIMIT 1", ()),
-    ("SELECT max(start_at) AS latest FROM steps WHERE user_id = %s", (_DUMMY_UUID,)),
-    ("SELECT max(start_at) AS latest FROM distance WHERE user_id = %s", (_DUMMY_UUID,)),
-    ("SELECT max(start_at) AS latest FROM total_calories_burned WHERE user_id = %s", (_DUMMY_UUID,)),
-    ("SELECT DISTINCT (hour AT TIME ZONE %s)::date AS d FROM heart_rate_hourly "
-     "WHERE user_id = %s AND hour >= %s",
-     ("UTC", _DUMMY_UUID, datetime(1970, 1, 1, tzinfo=timezone.utc))),
+    (AUTH_SQL, ("dummy",)),
+    (STATUS_HR_LATEST_SQL, ()),
+    (STATUS_ANY_USER_SQL, ()),
+    *((sql, (_DUMMY_UUID,)) for sql in STATUS_LATEST_SQL.values()),
+    (STREAK_SQL, ("UTC", _DUMMY_UUID, datetime(1970, 1, 1, tzinfo=timezone.utc))),
 )
 
 

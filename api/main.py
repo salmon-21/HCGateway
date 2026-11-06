@@ -8,12 +8,11 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 load_dotenv()
 
-try:
-    sentry_sdk.init(
-        dsn=os.environ['SENTRY_DSN'],
-        traces_sample_rate=1.0,
-    )
-except: pass
+# No-op when SENTRY_DSN is unset or empty.
+sentry_sdk.init(
+    dsn=os.environ.get('SENTRY_DSN'),
+    traces_sample_rate=1.0,
+)
 
 app = Flask(__name__)
 CORS(app)

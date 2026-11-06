@@ -5,7 +5,8 @@ Connect SQLite, etc.) and stream into the live PG via COPY. Gap-fill is
 the typical use case — only insert rows that aren't already covered.
 """
 import os
-from datetime import timedelta, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 
 import psycopg
 
@@ -15,6 +16,24 @@ POSTGRES_URI = os.environ.get(
 )
 DEFAULT_USERNAME = os.environ.get("BACKFILL_USERNAME", "salmon21")
 JST = timezone(timedelta(hours=9))
+
+
+# --- Health Connect SQLite export helpers -----------------------------------
+
+def blob_to_uuid(b):
+    return str(uuid.UUID(bytes=b))
+
+
+def ms_to_dt(ms):
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc) if ms is not None else None
+
+
+def load_app_names(sq):
+    """`application_info_table` is small (<100 rows); load it once."""
+    return {
+        r["row_id"]: r["package_name"]
+        for r in sq.execute("SELECT row_id, package_name FROM application_info_table")
+    }
 
 
 def connect():

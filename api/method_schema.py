@@ -9,7 +9,7 @@ Schema entries:
                               upsert by DELETE WHERE source_id = ?; INSERT.
                    - interval: 1 source doc → 1 row with start_at + end_at.
                    - instant:  1 source doc → 1 row with start_at only.
-  is_hypertable:  True for tables created with create_hypertable.
+  is_hypertable:  True for tables created with create_hypertable (omit otherwise).
                   ON CONFLICT target differs: (start_at, id) vs (id).
   value_cols:     [(source_path, dst_column, sql_type), ...]
                    source_path supports "a.b" dotted access for nested JSON.
@@ -56,7 +56,7 @@ METHOD_SCHEMA = {
         "kind": "interval",
         "is_hypertable": True,
         # Modern app sends a plain number in meters; legacy Mongo data had
-        # `{"inMeters":…}` unit-objects. `_pick_scalar` handles both.
+        # `{"inMeters":…}` unit-objects. `pick_scalar` handles both.
         "value_cols": [("distance", "meters", "double precision")],
     },
     "totalCaloriesBurned": {
@@ -69,7 +69,6 @@ METHOD_SCHEMA = {
     "oxygenSaturation": {
         "table": "oxygen_saturation",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("percentage", "percentage", "smallint")],
     },
     "respiratoryRate": {
@@ -78,13 +77,11 @@ METHOD_SCHEMA = {
         # every row. end_at made nullable in 0013 for the instant insert.
         "table": "respiratory_rate",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("rate", "rate", "double precision")],
     },
     "skinTemperature": {
         "table": "skin_temperature",
         "kind": "interval",
-        "is_hypertable": False,
         "value_cols": [
             ("temperature", "temperature_c", "double precision"),
             ("baseline", "baseline_c", "double precision"),
@@ -93,13 +90,11 @@ METHOD_SCHEMA = {
     "stress": {
         "table": "stress",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("score", "score", "smallint")],
     },
     "vitalityScore": {
         "table": "vitality_score",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [
             ("totalScore", "total_score", "double precision"),
             ("sleepScore", "sleep_score", "double precision"),
@@ -110,7 +105,6 @@ METHOD_SCHEMA = {
     "floorsClimbed": {
         "table": "floors_climbed",
         "kind": "interval",
-        "is_hypertable": False,
         "value_cols": [("floors", "floors", "smallint")],
     },
     "sleepSession": {
@@ -128,26 +122,22 @@ METHOD_SCHEMA = {
     "weight": {
         "table": "weight",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("weight", "weight_kg", "double precision")],
     },
     "bodyFat": {
         "table": "body_fat",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("percentage", "percentage", "double precision")],
     },
     "basalMetabolicRate": {
         "table": "basal_metabolic_rate",
         "kind": "instant",
-        "is_hypertable": False,
         # Client sends `basalMetabolicRate` (inKilocaloriesPerDay), not `bmr`.
         "value_cols": [("basalMetabolicRate", "bmr", "double precision")],
     },
     "height": {
         "table": "height",
         "kind": "instant",
-        "is_hypertable": False,
         # Client sends meters (record.height.inMeters); column renamed to
         # height_m in 0013 (was height_cm but held metres -> 100x mislabel).
         "value_cols": [("height", "height_m", "double precision")],
@@ -155,7 +145,6 @@ METHOD_SCHEMA = {
     "bloodPressure": {
         "table": "blood_pressure",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [
             ("systolic", "systolic", "smallint"),
             ("diastolic", "diastolic", "smallint"),
@@ -165,7 +154,6 @@ METHOD_SCHEMA = {
     "vo2Max": {
         "table": "vo2_max",
         "kind": "instant",
-        "is_hypertable": False,
         # Client sends `vo2MillilitersPerMinuteKilogram`, not `vo2Max`.
         "value_cols": [("vo2MillilitersPerMinuteKilogram", "vo2_max", "double precision")],
     },
@@ -203,31 +191,26 @@ METHOD_SCHEMA = {
     "activeCaloriesBurned": {
         "table": "active_calories_burned",
         "kind": "interval",
-        "is_hypertable": False,
         "value_cols": [("energy", "kcal", "double precision")],
     },
     "elevationGained": {
         "table": "elevation_gained",
         "kind": "interval",
-        "is_hypertable": False,
         "value_cols": [("elevation", "meters", "double precision")],
     },
     "hydration": {
         "table": "hydration",
         "kind": "interval",
-        "is_hypertable": False,
         "value_cols": [("volume", "liters", "double precision")],
     },
     "menstruationPeriod": {
         "table": "menstruation_period",
         "kind": "interval",
-        "is_hypertable": False,
         "value_cols": [],  # start_at + end_at only
     },
     "mindfulnessSession": {
         "table": "mindfulness_session",
         "kind": "interval",
-        "is_hypertable": False,
         "value_cols": [("mindfulnessSessionType", "session_type", "smallint")],
     },
     "nutrition": {
@@ -236,7 +219,6 @@ METHOD_SCHEMA = {
         # only some fields still inserts.
         "table": "nutrition",
         "kind": "interval",
-        "is_hypertable": False,
         "value_cols": [
             ("name", "name", "text"),
             ("energy", "energy_kcal", "double precision"),
@@ -260,7 +242,6 @@ METHOD_SCHEMA = {
     "plannedExerciseSession": {
         "table": "planned_exercise_session",
         "kind": "interval",
-        "is_hypertable": False,
         # blocks is a nested array under a single key -> jsonb (nullable).
         "value_cols": [
             ("exerciseType", "exercise_type", "smallint"),
@@ -270,7 +251,6 @@ METHOD_SCHEMA = {
     "wheelchairPushes": {
         "table": "wheelchair_pushes",
         "kind": "interval",
-        "is_hypertable": False,
         "value_cols": [("count", "count", "integer")],
     },
 
@@ -278,37 +258,31 @@ METHOD_SCHEMA = {
     "basalBodyTemperature": {
         "table": "basal_body_temperature",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("temperature", "temperature_c", "double precision")],
     },
     "bloodGlucose": {
         "table": "blood_glucose",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("level", "level_mmol_l", "double precision")],
     },
     "bodyTemperature": {
         "table": "body_temperature",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("temperature", "temperature_c", "double precision")],
     },
     "bodyWaterMass": {
         "table": "body_water_mass",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("mass", "mass_kg", "double precision")],
     },
     "boneMass": {
         "table": "bone_mass",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("mass", "mass_kg", "double precision")],
     },
     "cervicalMucus": {
         "table": "cervical_mucus",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [
             ("appearance", "appearance", "smallint"),
             ("sensation", "sensation", "smallint"),
@@ -317,37 +291,31 @@ METHOD_SCHEMA = {
     "intermenstrualBleeding": {
         "table": "intermenstrual_bleeding",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [],  # time only
     },
     "leanBodyMass": {
         "table": "lean_body_mass",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("mass", "mass_kg", "double precision")],
     },
     "menstruationFlow": {
         "table": "menstruation_flow",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("flow", "flow", "smallint")],
     },
     "ovulationTest": {
         "table": "ovulation_test",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("result", "result", "smallint")],
     },
     "restingHeartRate": {
         "table": "resting_heart_rate",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("beatsPerMinute", "bpm", "smallint")],
     },
     "sexualActivity": {
         "table": "sexual_activity",
         "kind": "instant",
-        "is_hypertable": False,
         "value_cols": [("protectionUsed", "protection_used", "smallint")],
     },
 }

@@ -7,29 +7,14 @@ import os
 import sqlite3
 import json
 import sys
-import uuid
-from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(__file__))
-from _pg_writer import connect, get_user_id, existing_ids, copy_rows  # noqa: E402
+from _pg_writer import (  # noqa: E402
+    connect, get_user_id, existing_ids, copy_rows,
+    blob_to_uuid, ms_to_dt, load_app_names,
+)
 
 SQLITE_PATH = os.environ.get("HC_SQLITE", "/tmp/hc_export/health_connect_export.db")
-
-
-def blob_to_uuid(b):
-    return str(uuid.UUID(bytes=b))
-
-
-def ms_to_dt(ms):
-    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc) if ms is not None else None
-
-
-def load_app_names(sq):
-    """`application_info_table` is small (<100 rows); load it once."""
-    return {
-        r["row_id"]: r["package_name"]
-        for r in sq.execute("SELECT row_id, package_name FROM application_info_table")
-    }
 
 
 def import_heart_rate(pg, sq, user_id, apps):

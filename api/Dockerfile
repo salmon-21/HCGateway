@@ -15,5 +15,5 @@ COPY . .
 
 # gunicorn instead of the Flask dev server: the dev server is single-threaded,
 # so one slow /fetch would block the device's /sync. 1 worker keeps the
-# in-process caches (streak, sleep-count) coherent; threads give concurrency.
+# in-process streak cache coherent; threads give concurrency.
 CMD ["gunicorn", "--bind", "0.0.0.0:6644", "--workers", "1", "--threads", "4", "--timeout", "120", "main:app"]
