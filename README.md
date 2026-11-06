@@ -54,4 +54,4 @@ cd app
 ./gradlew assembleRelease   # or build an APK
 ```
 
-Sentry is opt-in at runtime (in-app toggle); to use your own instance change the DSN in `AndroidManifest.xml`, and put the upload token in the gitignored `app/sentry.properties`.
+Sentry is opt-in at runtime (in-app toggle); to enable it set `sentry.dsn=<your DSN>` in the gitignored `app/local.properties` (or the `SENTRY_DSN` env var), and put the upload token in the gitignored `app/sentry.properties`.

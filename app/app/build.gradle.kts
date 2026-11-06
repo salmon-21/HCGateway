@@ -16,6 +16,16 @@ val gitCommitCount: Int = runCatching {
     }.standardOutput.asText.get().trim().toInt()
 }.getOrDefault(1)
 
+// Sentry DSN stays out of the repo: read `sentry.dsn` from the gitignored
+// app/local.properties, else the SENTRY_DSN env var. Empty disables the SDK,
+// so forks/clones build fine and never report into someone else's project.
+val sentryDsn: String = run {
+    val f = rootProject.file("local.properties")
+    val props = java.util.Properties()
+    if (f.isFile) f.inputStream().use { props.load(it) }
+    props.getProperty("sentry.dsn") ?: System.getenv("SENTRY_DSN") ?: ""
+}
+
 android {
     namespace = "dev.shuchir.hcgateway"
     compileSdk = 37
@@ -26,6 +36,7 @@ android {
         targetSdk = 35
         versionCode = gitCommitCount
         versionName = "3.0.0"
+        manifestPlaceholders["sentryDsn"] = sentryDsn
     }
 
     buildTypes {
