@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
@@ -21,7 +23,7 @@ val gitCommitCount: Int = runCatching {
 // so forks/clones build fine and never report into someone else's project.
 val sentryDsn: String = run {
     val f = rootProject.file("local.properties")
-    val props = java.util.Properties()
+    val props = Properties()
     if (f.isFile) f.inputStream().use { props.load(it) }
     props.getProperty("sentry.dsn") ?: System.getenv("SENTRY_DSN") ?: ""
 }
